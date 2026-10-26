@@ -4,6 +4,6 @@
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p dist
-tar -czf dist/robot-nodered.tar.gz \
+COPYFILE_DISABLE=1 tar --no-xattrs -czf dist/robot-nodered.tar.gz \
   data/flows.json data/settings.js data/site.json data/lib data/public termux/install.sh scripts
 ls -lh dist/robot-nodered.tar.gz

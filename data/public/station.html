@@ -226,8 +226,16 @@ function tableState(t) {
   return ['Sẵn sàng', ''];
 }
 // Red button: undo the selection, or cancel/recall the chosen robot's job (else this station's newest job).
+// Food coming back / dishes to unload can't be cancelled, only received — from the station too, staff stand right there.
+const backStop = m => { const s = m.status === 'active' && m.stops[m.cur]; return s && ['return', 'unload'].includes(s.a) ? s : null; };
+const arrived = m => backStop(m) && (App.state.robots.find(x => x.id === m.robot) || {}).phase === 'atStop';
+const locked = m => (m.kind === 'bus' && m.loaded) || backStop(m);
+function receiveBtn(m, cls) {
+  const s = backStop(m);
+  return `<button class="${cls}" data-act="receive" data-m="${m.id}">✓ ${s.a === 'return' ? 'Đã nhận lại đồ' : 'Đã dỡ chén đĩa'}${cls.includes('big') ? `<small>${m.robot} tại ${esc(pname(s.p))} · bấm để cho robot về</small>` : ''}</button>`;
+}
 function cancelTarget() {
-  const ms = App.state.missions.filter(m => !(m.kind === 'bus' && m.loaded));
+  const ms = App.state.missions.filter(m => !locked(m) || arrived(m));
   if (F.robot !== 'any') return ms.find(m => m.robot === F.robot);
   return ms.filter(m => m.by === by()).sort((a, b) => b.createdAt - a.createdAt)[0];
 }
@@ -264,13 +272,15 @@ function renderDesk() {
   $('qhead').textContent = `Hàng chờ lệnh · ${ms.length}`;
   setHTML($('queue'), ms.map((m, i) => {
     const [t, c] = missionStatus(m), k = 'cm-' + m.id;
-    const x = m.kind === 'bus' && m.loaded ? '<span title="Đang chở chén bẩn — không huỷ">🔒</span>'
+    const x = arrived(m) ? receiveBtn(m, 'btn sm primary')
+      : locked(m) ? `<span title="${backStop(m) ? 'Đang mang đồ về — chờ nhận lại' : 'Đang chở chén bẩn — không huỷ'}">🔒</span>`
       : `<button class="btn sm ${isArmed(k) ? 'armed' : 'warn'}" data-act="cancel" data-m="${m.id}" title="Huỷ lệnh">${isArmed(k) ? 'Huỷ?' : '✕'}</button>`;
     return `<li><b>${i + 1}. ${esc(m.label)}${m.urgent ? ' ⚡' : ''}</b>${x}<span class="pill ${c}">${m.robot ? m.robot + ' · ' : ''}${esc(t)}</span></li>`;
   }).join('') || '<li class="empty muted">Không có lệnh nào</li>');
 
   const tgt = cancelTarget(), k = tgt && 'cm-' + tgt.id;
   const red = sel.length ? `<button class="big red" data-act="unpick">✕ Bỏ chọn<small>${sel.length} mục đang chọn</small></button>`
+    : tgt && arrived(tgt) ? receiveBtn(tgt, 'big green')
     : `<button class="big red ${tgt && isArmed(k) ? 'armed' : ''}" ${tgt ? `data-act="cancel" data-m="${tgt.id}"` : 'disabled'}>${tgt && isArmed(k) ? 'Chạm lần nữa để huỷ' : '✕ Huỷ lệnh / thu hồi robot'}
       <small>${tgt ? esc(tgt.label) + (tgt.robot ? ' · ' + tgt.robot : '') : 'Không có lệnh để huỷ'}</small></button>`;
   const hint = !sel.length ? (F.tab === 'summon' ? 'Chọn khu hoặc bàn' : 'Chọn bàn trên lưới')
@@ -408,7 +418,8 @@ function missionHTML(m) {
     ${m.note ? `<div class="small">📝 ${esc(m.note)}</div>` : ''}
     <div class="stops">${stops}</div>
     <div class="mrow">${m.loaded ? '<span class="small muted">Đồ đang trên khay</span>' : '<span></span>'}
-      ${lockedBus ? '<span class="small muted">Đang chở chén bẩn — không huỷ</span>' :
+      ${arrived(m) ? receiveBtn(m, 'btn sm primary') : backStop(m) ? '<span class="small muted">Đang mang đồ về — chờ nhận lại</span>' :
+      lockedBus ? '<span class="small muted">Đang chở chén bẩn — không huỷ</span>' :
       `<button class="btn sm ${isArmed(k) ? 'armed' : 'warn'}" data-act="cancel" data-m="${m.id}">${isArmed(k) ? 'Chạm lần nữa để huỷ' : 'Huỷ nhiệm vụ'}</button>`}</div>
   </div>`;
 }
@@ -460,6 +471,7 @@ document.body.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b || b.dataset.act === 'create') return;
   const a = b.dataset.act, m = +b.dataset.m, r = b.dataset.r;
+  if (a === 'receive') { const x = App.state.missions.find(y => y.id === m); if (x && arrived(x)) send({ type: 'confirm', robot: x.robot, mission: x.id, stop: x.cur, by: by() }); }
   if (a === 'cancel') armed('cm-' + m, () => send({ type: 'cancel', mission: m, by: by() }), render);
   if (a === 'cancelStop') armed(`cs-${m}-${b.dataset.s}`, () => send({ type: 'cancelStop', mission: m, stop: +b.dataset.s, by: by() }), render);
   if (a === 'manual') armed('man-' + r, () => send({ type: 'manual', robot: r, by: by() }), render);
