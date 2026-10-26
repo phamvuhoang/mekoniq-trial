@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output (scripts/pack.sh)
+dist/
+
+# Node-RED runtime state (not shipped, see scripts/pack.sh)
+data/context/
+data/.config.*
+data/flows_cred.json
+data/.flows.json.backup
+data/.*.backup
+data/.sessions.json
+
+# Secrets
+.env
+.env.*
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp

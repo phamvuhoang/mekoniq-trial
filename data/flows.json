@@ -1,0 +1,126 @@
+[
+  {
+    "id": "tab",
+    "type": "tab",
+    "label": "MEKONIQ Serve S1",
+    "disabled": false,
+    "info": "Kitchen/Station tablets -> Mission Orchestrator -> Robot Adapter (simulator) -> telemetry.\nUI: / (station.html, robot.html, table.html). WS: /ws.\nSite map, robots, timings: data/site.json."
+  },
+  {
+    "id": "ws_listener",
+    "type": "websocket-listener",
+    "path": "/ws",
+    "wholemsg": "false"
+  },
+  {
+    "id": "c_in",
+    "type": "comment",
+    "z": "tab",
+    "name": "INPUT: trạm / robot / khách (WebSocket)",
+    "x": 170,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "ws_in",
+    "type": "websocket in",
+    "z": "tab",
+    "name": "UI -> lệnh",
+    "server": "ws_listener",
+    "client": "",
+    "x": 140,
+    "y": 120,
+    "wires": [
+      [
+        "orch"
+      ]
+    ]
+  },
+  {
+    "id": "orch",
+    "type": "function",
+    "z": "tab",
+    "name": "Mission Orchestrator",
+    "func": "// CORE: Mission Orchestrator — logic in lib/orchestrator.js (unit-tested by scripts/test.js).\nconst { orchestrator: O, site } = global.get('mekoniq');\nconst now = Date.now();\nconst st = flow.get('orch') || O.init(site, now);\nlet input;\nif (msg.topic === 'adapter') input = { source: 'adapter', data: msg.payload };\nelse {\n    try { input = { source: 'ui', data: JSON.parse(msg.payload), session: msg._session }; } catch (e) { return null; }\n}\nconst r = O.handle(st, site, input, now);\nflow.set('orch', st);\nreturn [\n    r.ui.map(u => u.session ? { payload: u.payload, _session: u.session } : { payload: u.payload }),\n    r.cmds.map(cmd => ({ topic: 'cmd', payload: cmd }))\n];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 140,
+    "wires": [
+      [
+        "ws_out"
+      ],
+      [
+        "sim"
+      ]
+    ]
+  },
+  {
+    "id": "ws_out",
+    "type": "websocket out",
+    "z": "tab",
+    "name": "state/event -> UI",
+    "server": "ws_listener",
+    "client": "",
+    "x": 660,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "c_ad",
+    "type": "comment",
+    "z": "tab",
+    "name": "ADAPTER: thay simulator bằng gateway robot thật",
+    "x": 210,
+    "y": 220,
+    "wires": []
+  },
+  {
+    "id": "tick",
+    "type": "inject",
+    "z": "tab",
+    "name": "tick 0.5s",
+    "props": [
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "0.5",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "1",
+    "topic": "tick",
+    "x": 140,
+    "y": 280,
+    "wires": [
+      [
+        "sim"
+      ]
+    ]
+  },
+  {
+    "id": "sim",
+    "type": "function",
+    "z": "tab",
+    "name": "Robot Adapter (Simulator)",
+    "func": "// ADAPTER: robot simulator. Replace this node with a vendor gateway speaking the same contract.\nconst { simulator: S, site } = global.get('mekoniq');\nconst sim = flow.get('sim') || S.init(site);\nconst events = S.handle(sim, site, msg.topic === 'tick' ? { cmd: 'tick' } : msg.payload, Date.now());\nflow.set('sim', sim);\nreturn [events.map(e => ({ topic: 'adapter', payload: e }))];",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 280,
+    "wires": [
+      [
+        "orch"
+      ]
+    ]
+  }
+]
