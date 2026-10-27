@@ -156,6 +156,10 @@ function handle(st, site, input, now) {
       start(id, b, now, events, mqtt);
       break;
     }
+    case 'probe':   // setup.html: check a taught point by driving there; only an idle robot with no goal, no state kept
+      if (b && !b.goal && !b.paused && !MOVING.includes(b.status) && Number.isFinite(input.x) && Number.isFinite(input.y))
+        mqtt.push({ topic: b.topic + '/GoToLocationCapability/go/set', payload: JSON.stringify({ coordinates: { x: Math.round(input.x), y: Math.round(input.y) } }) });
+      break;
     case 'stop': if (b) { b.paused = true; b.pending = false; b.checkUntil = 0; mqtt.push(op(b, 'STOP')); } break;
     case 'resume':
       if (!b) break;

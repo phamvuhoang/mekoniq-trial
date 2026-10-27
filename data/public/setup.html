@@ -287,7 +287,11 @@ $('upload').onchange = async e => {
 $('reset').onclick = () => armed('reset', () => { send({ type: 'siteReset', by: BY }); saving = true; setDirty(true); }, () => { $('reset').textContent = isArmed('reset') ? 'Chạm lần nữa để khôi phục' : 'Khôi phục mặc định'; $('reset').classList.toggle('armed', isArmed('reset')); });
 
 // ---- Save / revert / tabs ----
-$('save').onclick = () => { msg(''); saving = true; setDirty(true); send({ type: 'siteSave', site: D, by: BY }); };
+$('save').onclick = () => {
+  const r = curRobot();
+  if (r && lastMap) r.valetudo.mapRef = { size: lastMap.size, ...(lastMap.charger && { charger: lastMap.charger }) };   // to notice a re-mapped robot later
+  msg(''); saving = true; setDirty(true); send({ type: 'siteSave', site: D, by: BY });
+};
 $('revert').onclick = () => load();
 $('reload').onclick = () => load();
 $('tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; history.replaceState(null, '', '?tab=' + tab); render(); } };

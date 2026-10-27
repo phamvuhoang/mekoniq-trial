@@ -283,6 +283,19 @@ const PTS = SITE.robots[0].valetudo.points;
 }
 
 {
+  // Task 11: probe = drive an idle robot to a spot to check a taught point; no goal, no arrival bookkeeping
+  const st = V.init(SITE); let now = 1e12;
+  const H = (i) => V.handle(st, SITE, i, now);
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'docked' });
+  assert.deepStrictEqual(H({ cmd: 'probe', robot: 'R1', x: 123, y: 456 }).mqtt, [{ topic: 'valetudo/Bot/GoToLocationCapability/go/set', payload: '{"coordinates":{"x":123,"y":456}}' }]);
+  assert.strictEqual(st.robots.R1.goal, null);
+  H({ cmd: 'goto', robot: 'R1', to: 'kitchen', token: 1 });
+  assert.deepStrictEqual(H({ cmd: 'probe', robot: 'R1', x: 1, y: 2 }).mqtt, []);   // busy: ignored
+  console.log('✓ probe');
+}
+
+{
   const S = require('../data/lib/simulator');
   assert.deepStrictEqual(Object.keys(S.init({ ...SITE, map: { nodes: { D1: { x: 7.5, y: 1.2 } }, edges: [] } }).robots), ['R2']);
   // state saved before R1 moved to Valetudo (flow context survives restarts) -> R1 dropped on the next input
