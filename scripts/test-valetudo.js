@@ -138,6 +138,13 @@ const SITE = {
   now += 3000; pos(1450, 1850);
   assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 11 }]);
 
+  // staff pressed 'Đã dọn lối đi' (orchestrator ignores pause/resume while blocked: this is the way on)
+  fresh(); goto('T01', 12); status('moving'); now += 3000; pos(3000, 3000); status('idle');
+  assert.strictEqual(tel().why, 'object');
+  assert.deepStrictEqual(H({ cmd: 'sim', robot: 'R1', fault: 'clear' }).mqtt, [{ topic: GO, payload: T01 }]);
+  assert.strictEqual(tel().blocked, false);
+  assert.deepStrictEqual(H({ cmd: 'sim', robot: 'R1', fault: 'clear' }).mqtt, []);   // not blocked -> nothing
+
   // j) no position at all: moving -> idle after 3 s -> arrived (trust status)
   fresh(); goto('T01', 8); status('moving'); now += 3000;
   assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 8 }]);

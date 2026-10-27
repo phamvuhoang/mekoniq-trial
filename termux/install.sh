@@ -18,9 +18,16 @@ if ! command -v node-red >/dev/null || ! node -v >/dev/null 2>&1; then
   pkg install -y -o Dpkg::Options::=--force-confnew nodejs-lts termux-api
   npm install -g --unsafe-perm node-red@5.0.8
 fi
+# MQTT broker for the Valetudo robot (devices installed before it was added).
+command -v mosquitto >/dev/null || pkg install -y -o Dpkg::Options::=--force-confnew mosquitto
 
 mkdir -p "$APP"
+# site.json may hold the Valetudo topic / points entered on this device: keep a copy before overwriting.
+[ -f "$APP/site.json" ] && cp "$APP/site.json" "$APP/site.json.bak" && grep -q '"driver"' "$APP/site.json.bak" && SITE_BAK=1
+
 cp -r "$HERE/data/." "$APP/"
+# Mosquitto 2.x listens on localhost only by default; the robot connects over the Wi-Fi. LAN only, no login.
+printf "listener 1883 0.0.0.0\nallow_anonymous true\n" > "$APP/mosquitto.conf"
 
 # Editor (/admin) password: asked once, stored as a bcrypt hash. UI pages stay open to tablets on the Wi-Fi.
 if [ ! -f "$ENV" ]; then
@@ -43,6 +50,7 @@ cat > "$HOME/.termux/boot/start-nodered" <<'BOOT'
 termux-wake-lock
 cd "$HOME/robot"
 . "$HOME/robot/.env"
+pgrep -x mosquitto >/dev/null || mosquitto -c "$HOME/robot/mosquitto.conf" -d
 while true; do
   node-red -u "$HOME/robot" -s "$HOME/robot/settings.js" >> "$HOME/robot/node-red.log" 2>&1
   sleep 5
@@ -63,4 +71,9 @@ Mở trên các tablet cùng Wi-Fi (Chrome):
   Màn hình bếp        : http://$IP:$P/station.html?role=bep
   Màn hình robot R1   : http://$IP:$P/robot.html?robot=R1
   Trình soạn (admin)  : http://$IP:$P/admin
+MQTT broker cho Valetudo : $IP:1883
+Đặt IP cố định cho máy này trên router (DHCP reservation) trước khi khai vào Valetudo.
+Cấu hình robot Valetudo: ~/bundle/docs/valetudo-setup.md
 MSG
+[ -n "$SITE_BAK" ] && echo "⚠️ site.json cũ (có thể chứa cấu hình Valetudo) đã lưu ở ~/robot/site.json.bak — chép lại phần robots/valetudo nếu cần, rồi: pkill -f node-red"
+true

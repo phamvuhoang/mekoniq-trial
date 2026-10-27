@@ -99,6 +99,9 @@ function handle(st, site, input, now) {
       b.paused = false;
       if (b.goal && b.why !== 'noroute') { b.blocked = false; b.why = null; mqtt.push(send(b, now)); }
       break;
+    case 'sim':   // 'clear' = staff cleared the way ("Đã dọn lối đi"): try again. Other faults are simulator-only.
+      if (b && input.fault === 'clear' && b.goal && b.why === 'object' && !b.paused) { b.blocked = false; b.why = null; mqtt.push(send(b, now)); }
+      break;
     case 'reset': for (const r of Object.values(st.robots)) Object.assign(r, { goal: null, pending: false, paused: false, blocked: false, why: null }); break;
     case 'mqtt': ingest(st, input, now, events, mqtt); break;
     case 'tick':
@@ -106,7 +109,7 @@ function handle(st, site, input, now) {
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
       events.push(telemetry(st, site));
       break;
-    // map / obstacle / sim: the robot uses its own map and sensors.
+    // map / obstacle: the robot uses its own map and sensors.
   }
   return { events, mqtt };
 }
