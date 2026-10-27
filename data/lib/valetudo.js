@@ -33,4 +33,73 @@ function calib(site) {
   return { T: fit(pairs), points };
 }
 
-module.exports = { fit, toSite, calib };
+const MOVING = ['moving', 'returning'];
+const arriveCm = (site, r) => (r.valetudo && r.valetudo.arriveCm) ?? 40;
+
+function init(site) {
+  const st = { robots: {} };
+  for (const r of site.robots) if (r.driver === 'valetudo')
+    st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, status: null, flag: null, err: null, battery: null, pos: null,
+      online: false, goal: null, pending: null, pendingSince: 0, sentAt: 0, paused: false, blocked: false, why: null };
+  return st;
+}
+
+const op = (b, cmd) => ({ topic: b.topic + '/BasicControlCapability/operation/set', payload: cmd });
+// The publish that drives the robot to its goal.
+function send(b, goal, now) {
+  b.sentAt = now;
+  return goal.home ? op(b, 'HOME')
+    : { topic: b.topic + '/GoToLocationCapability/go/set', payload: JSON.stringify({ coordinates: { x: Math.round(goal.coords.x), y: Math.round(goal.coords.y) } }) };
+}
+
+// input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload}. Returns {events, mqtt}.
+function handle(st, site, input, now) {
+  const events = [], mqtt = [], b = st.robots[input.robot];
+  switch (input.cmd) {
+    case 'goto': {
+      if (!b) break;
+      const { points } = calib(site);
+      const goal = { to: input.to, token: input.token, home: input.to === b.dock, coords: points[input.to] || null };
+      b.goal = goal; b.paused = false; b.blocked = false; b.why = null;
+      if (!goal.home && !goal.coords) { b.blocked = true; b.why = 'noroute'; break; }
+      mqtt.push(send(b, goal, now));
+      break;
+    }
+    case 'stop': if (b) { b.paused = true; mqtt.push(op(b, 'STOP')); } break;
+    case 'resume':
+      if (!b) break;
+      b.paused = false;
+      if (b.goal && b.why !== 'noroute') mqtt.push(send(b, b.goal, now));
+      break;
+    case 'reset': for (const r of Object.values(st.robots)) Object.assign(r, { goal: null, pending: null, paused: false, blocked: false, why: null }); break;
+    case 'mqtt': ingest(st, site, input, now, events, mqtt); break;
+    case 'tick': events.push(telemetry(st, site)); break;
+    // map / obstacle / sim: the robot uses its own map and sensors.
+  }
+  return { events, mqtt };
+}
+
+function ingest(st, site, input, now, events, mqtt) {
+  for (const [id, b] of Object.entries(st.robots)) {
+    if (!input.topic.startsWith(b.topic + '/')) continue;
+    const key = input.topic.slice(b.topic.length + 1), v = String(input.payload);
+    if (key === '$state') b.online = v === 'ready';
+    else if (key === 'StatusStateAttribute/status') b.status = v;
+    else if (key === 'StatusStateAttribute/flag') b.flag = v;
+    else if (key === 'BatteryStateAttribute/level') b.battery = +v;
+  }
+}
+
+function telemetry(st, site) {
+  const { T } = calib(site), robots = [];
+  for (const [id, b] of Object.entries(st.robots)) {
+    if (!b.online || b.status === null) continue;
+    const p = b.pos && T ? toSite(T, b.pos) : site.points[b.dock] || { x: 0, y: 0 };
+    const moving = !!b.goal && !b.paused && !b.blocked;
+    robots.push({ id, x: p.x, y: p.y, battery: b.battery ?? 0, moving, blocked: b.blocked, nav: moving ? 'moving' : 'idle',
+      why: b.why, path: [], rem: 0 });
+  }
+  return { event: 'telemetry', robots };
+}
+
+module.exports = { fit, toSite, calib, init, handle, arriveCm };
