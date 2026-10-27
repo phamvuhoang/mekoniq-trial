@@ -268,4 +268,85 @@ scenario('chuyển xử lý thủ công', () => {
   assert.strictEqual(st.kpi.failed, 1);
 });
 
+
+// ---- Live site config (Task 3): save / reset / probe / pos / log; works without site.map ----
+{
+  const seed = require('../data/site.json');
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const site2 = clone(site); site2.rev = 5;
+  const st2 = O.init(site2, now);
+  const H = (d, s = site2) => O.handle(st2, s, { source: 'ui', data: { by: 'test', ...d }, session: 'S1', seed }, now);
+  const evText = r => r.ui.filter(u => u.session === 'S1').map(u => JSON.parse(u.payload)).filter(p => p.type === 'event').map(p => p.text);
+
+  let r = H({ type: 'siteSave', site: { ...clone(site2), rev: 4 } });
+  assert.ok(evText(r)[0].startsWith('Không lưu: máy khác'), 'rev mismatch refused');
+  assert.strictEqual(r.site, undefined);
+
+  H({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T01'], robot: 'R1' });
+  const noT01 = clone(site2); delete noT01.points.T01;
+  r = H({ type: 'siteSave', site: noT01 });
+  assert.ok(evText(r)[0].includes('đang có lệnh'), 'deleting a point in use refused');
+  const noR1 = clone(site2); noR1.robots = noR1.robots.filter(x => x.id !== 'R1');
+  assert.ok(evText(H({ type: 'siteSave', site: noR1, seed }))[0].includes('đang có lệnh'), 'deleting a busy robot refused');
+
+  const withT13 = clone(site2); withT13.points.T13 = { name: 'Bàn 13', kind: 'table' };
+  r = H({ type: 'siteSave', site: withT13 });
+  assert.deepStrictEqual(evText(r), []);
+  assert.strictEqual(r.site.rev, 6);
+  assert.ok(r.ui.some(u => !u.session && JSON.parse(u.payload).type === 'site'), 'site broadcast');
+  const live = r.site;
+  r = H({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T13'], robot: 'R2' }, live);
+  const go = r.cmds.find(c => c.cmd === 'goto' && c.robot === 'R2');
+  assert.ok(go && go.to === 'kitchen');
+  // advance R2 to kitchen by faking arrival, then it must head to T13 (no route node) without throwing
+  O.handle(st2, live, { source: 'adapter', data: { event: 'arrived', robot: 'R2', token: st2.robots.R2.token } }, now);
+  const m2 = st2.missions.find(m => m.robot === 'R2');
+  r = H({ type: 'confirm', robot: 'R2', mission: m2.id, stop: 0 }, live);
+  const go13 = r.cmds.find(c => c.cmd === 'goto' && c.to === 'T13');
+  assert.deepStrictEqual([go13.x, go13.y], [0, 0]);
+
+  r = H({ type: 'siteReset' }, live);
+  assert.ok(evText(r)[0].includes('đang có lệnh'), 'reset refused while missions run');
+  H({ type: 'reset' }, live);   // demo reset clears all missions
+  r = H({ type: 'siteReset' }, live);
+  assert.strictEqual(r.site.rev, 7);
+  assert.strictEqual(Object.values(r.site.points).filter(p => p.kind === 'table').length, 0);
+  console.log('✓ siteSave / siteReset / point without route node');
+
+  // probe only when idle and free
+  const st3 = O.init(site2, now);
+  const H3 = d => O.handle(st3, site2, { source: 'ui', data: { by: 'test', ...d } }, now);
+  assert.deepStrictEqual(H3({ type: 'probe', robot: 'R1', x: 100, y: 200 }).cmds, [{ cmd: 'probe', robot: 'R1', x: 100, y: 200 }]);
+  H3({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T01'], robot: 'R1' });
+  assert.deepStrictEqual(H3({ type: 'probe', robot: 'R1', x: 100, y: 200 }).cmds, []);
+  // pos passthrough + log event
+  O.handle(st3, site2, { source: 'adapter', data: { event: 'telemetry', robots: [{ id: 'R2', x: 1, y: 1, battery: 90, moving: false, blocked: false, nav: 'idle', pos: { x: 1, y: 2, angle: 90 } }] } }, now);
+  assert.deepStrictEqual(st3.robots.R2.pos, { x: 1, y: 2, angle: 90 });
+  const snap = JSON.parse(O.handle(st3, site2, { source: 'ui', data: { type: 'hello' }, session: 'S' }, now).ui.find(u => JSON.parse(u.payload).type === 'state').payload);
+  assert.deepStrictEqual(snap.robots.find(x => x.id === 'R2').pos, { x: 1, y: 2, angle: 90 });
+  O.handle(st3, site2, { source: 'adapter', data: { event: 'log', robot: 'R1', text: 'hello' } }, now);
+  assert.strictEqual(st3.log[0].text, 'hello');
+  console.log('✓ probe / pos / log');
+
+  // seed site: no map, no floor, dock without x,y
+  const st4 = O.init(seed, now);
+  assert.strictEqual(st4.robots.R1.x, 0);
+  assert.deepStrictEqual(st4.map.nodes, {});
+  O.handle(st4, seed, { source: 'ui', data: { type: 'hello' }, session: 'S' }, now);
+  // robots gone from site (no mission) are dropped
+  const seed2 = clone(seed); seed2.robots = [];
+  O.handle(st4, seed2, { source: 'ui', data: { type: 'hello' }, session: 'S' }, now);
+  assert.deepStrictEqual(Object.keys(st4.robots), []);
+  // valetudo robot nearest-by-cm assignment: only robots taught the point may take it
+  const two = clone(seed); two.points.T01 = { name: 'Bàn 01', kind: 'table' };
+  two.robots = [{ id: 'R1', dock: 'D1', driver: 'valetudo', valetudo: { topic: 'a', points: { kitchen: { x: 100, y: 100 }, T01: { x: 500, y: 500 } } } },
+                { id: 'R2', dock: 'D1', driver: 'valetudo', valetudo: { topic: 'b', points: { kitchen: { x: 100, y: 100 } } } }];
+  const st5 = O.init(two, now);
+  const tel = id => ({ id, x: 0, y: 0, battery: 90, moving: false, blocked: false, nav: 'idle', pos: { x: id === 'R1' ? 2000 : 110, y: 100, angle: 0 } });
+  O.handle(st5, two, { source: 'adapter', data: { event: 'telemetry', robots: [tel('R1'), tel('R2')] } }, now);
+  O.handle(st5, two, { source: 'ui', data: { by: 't', type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T01'], robot: 'any' } }, now);
+  assert.strictEqual(st5.missions[0].robot, 'R1', 'R2 is nearer but was never taught T01');
+  console.log('✓ seed site / robots removed / nearest-by-cm assignment');
+}
+
 console.log('OK — all scenarios pass');
