@@ -157,3 +157,18 @@ const SITE = {
   assert.deepStrictEqual(st.robots.R1.pos, { x: 1455, y: 1848, angle: 90 });
   console.log('✓ map-data position');
 }
+
+{
+  const S = require('../data/lib/simulator');
+  assert.deepStrictEqual(Object.keys(S.init({ ...SITE, map: { nodes: { D1: { x: 7.5, y: 1.2 } }, edges: [] } }).robots), ['R2']);
+  // state saved before R1 moved to Valetudo (flow context survives restarts) -> R1 dropped on the next input
+  const SIM = { ...SITE, map: { nodes: { D1: { x: 7.5, y: 1.2 } }, edges: [] }, sim: { drainIdle: 0, charge: 0 } };
+  const old = S.init({ ...SIM, robots: [{ id: 'R1', dock: 'D1' }, { id: 'R2', dock: 'D1' }] });
+  assert.deepStrictEqual(S.handle(old, SIM, { cmd: 'tick' }, 1e12)[0].robots.map(r => r.id), ['R2']);
+  console.log('✓ simulator ignores valetudo robots');
+  // Valetudo state saved with another topic (placeholder -> real identifier) -> rebuilt
+  const val = V.init(SITE), SITE2 = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { topic: 'valetudo/Real' } }] };
+  V.handle(val, SITE2, { cmd: 'mqtt', topic: 'valetudo/Real/$state', payload: 'ready' }, 0);
+  assert.strictEqual(val.robots.R1.online, true);
+  console.log('✓ valetudo state rebuilt when site.json changes');
+}

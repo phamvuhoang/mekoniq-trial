@@ -50,8 +50,10 @@ const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'p
 const STALE_MS = 1500, STOP_WAIT_MS = 3000;
 const arriveCm = (site, r) => (r.valetudo && r.valetudo.arriveCm) ?? 40;
 
+const robotsKey = site => site.robots.filter(r => r.driver === 'valetudo').map(r => r.id + '@' + r.valetudo.topic).join();
+
 function init(site) {
-  const st = { robots: {} };
+  const st = { key: robotsKey(site), robots: {} };
   for (const r of site.robots) if (r.driver === 'valetudo')
     st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r), status: null, flag: null, err: null,
       battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, paused: false, blocked: false, why: null };
@@ -74,6 +76,7 @@ function arrive(id, b, events) {
 
 // input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload}. Returns {events, mqtt}.
 function handle(st, site, input, now) {
+  if (st.key !== robotsKey(site)) { for (const k of Object.keys(st)) delete st[k]; Object.assign(st, init(site)); }   // site.json edited
   const events = [], mqtt = [], id = input.robot, b = st.robots[id];
   switch (input.cmd) {
     case 'goto': {
