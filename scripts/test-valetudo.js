@@ -1,6 +1,8 @@
 // Unit tests for the Valetudo MQTT adapter (lib/valetudo.js) with a fake clock: node scripts/test-valetudo.js
 const assert = require('assert');
 const V = require('../data/lib/valetudo');
+// handle() results compared exactly: drop the adapter's human-readable log events first
+const noLog = r => ({ ...r, events: r.events.filter(e => e.event !== 'log') });
 
 // robot cm = site m * 100, rotated 90° (x_r = y_m*100, y_r = -x_m*100), shifted by (1000, 3000)
 const pairs = [{ site: { x: 3, y: 11.5 }, robot: { x: 1000 + 1150, y: 3000 - 300 } },
@@ -23,24 +25,24 @@ const PTS = SITE.robots[0].valetudo.points;
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'docked' });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '87' });
-  let t = H({ cmd: 'tick' }).events[0].robots[0];
+  let t = H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0];
   assert.deepStrictEqual(t, { id: 'R1', x: 7.5, y: 1.2, battery: 87, moving: false, blocked: false, nav: 'idle', why: null, path: [], rem: 0, pos: null }); // no position yet -> dock
   let r = H({ cmd: 'goto', robot: 'R1', to: 'kitchen', x: 3, y: 11.5, token: 1 });
   assert.deepStrictEqual(r.mqtt, [{ topic: 'valetudo/Bot/GoToLocationCapability/go/set', payload: '{"coordinates":{"x":2150,"y":2700}}' }]);
-  assert.strictEqual(H({ cmd: 'tick' }).events[0].robots[0].nav, 'moving');
+  assert.strictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0].nav, 'moving');
   assert.deepStrictEqual(H({ cmd: 'stop', robot: 'R1' }).mqtt, [{ topic: 'valetudo/Bot/BasicControlCapability/operation/set', payload: 'STOP' }]);
   now += 2000;
   assert.strictEqual(H({ cmd: 'resume', robot: 'R1' }).mqtt[0].payload, '{"coordinates":{"x":2150,"y":2700}}');   // resend goal
   r = H({ cmd: 'goto', robot: 'R1', to: 'T06', x: 14.5, y: 8, token: 2 });                 // not calibrated
   assert.deepStrictEqual(r.mqtt, []);
-  t = H({ cmd: 'tick' }).events[0].robots[0];
+  t = H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0];
   assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'noroute');
   now += 2000;
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'idle' });   // left the dock
   assert.strictEqual(H({ cmd: 'goto', robot: 'R1', to: 'D1', x: 7.5, y: 1.2, token: 3 }).mqtt[0].payload, 'HOME');
-  assert.strictEqual(H({ cmd: 'tick' }).events[0].robots[0].blocked, false);
+  assert.strictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0].blocked, false);
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'lost' });
-  assert.deepStrictEqual(H({ cmd: 'tick' }).events[0].robots, []);
+  assert.deepStrictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots, []);
   assert.deepStrictEqual(H({ cmd: 'map', map: {}, v: 2 }), { events: [], mqtt: [], maps: {} });       // ignored
   console.log('✓ ingest / telemetry / publishes');
 }
@@ -53,7 +55,7 @@ const PTS = SITE.robots[0].valetudo.points;
   const H = (i) => V.handle(st, SITE, i, now);
   const status = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: s });
   const goto = (to, token) => H({ cmd: 'goto', robot: 'R1', to, x: 0, y: 0, token });
-  const tel = () => H({ cmd: 'tick' }).events[0].robots[0];
+  const tel = () => H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0];
   const pos = (x, y) => { st.robots.R1.pos = { x, y }; };
   const fresh = () => {
     st = V.init(SITE); now = 1e12;
@@ -80,10 +82,10 @@ const PTS = SITE.robots[0].valetudo.points;
 
   // c) stops far away -> blocked 'object'; resume resends go/set; later arrives
   now += 3000; status('moving'); pos(3000, 3000);
-  assert.deepStrictEqual(status('idle').events, []);
+  assert.deepStrictEqual(noLog(status('idle')).events, []);
   assert.strictEqual(tel().blocked, false);   // waits up to 5 s for a fresh position
   now += 5000;
-  t = tel(); assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'object');
+  t = tel(); assert.strictEqual(t.blocked, false); assert.strictEqual(t.nav, 'wait'); assert.strictEqual(t.why, 'object');   // soft: retries by itself
   assert.deepStrictEqual(H({ cmd: 'resume', robot: 'R1' }).mqtt, [{ topic: GO, payload: T01 }]);
   assert.strictEqual(tel().blocked, false);
   status('moving'); now += 3000; pos(1455, 1850);
@@ -152,7 +154,7 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 8 }]);
   // status 'error' mid-trip -> blocked, never 'arrived'
   goto('kitchen', 9); now += 3000;
-  assert.deepStrictEqual(status('error').events, []);
+  assert.deepStrictEqual(noLog(status('error')).events, []);
   assert.strictEqual(tel().why, 'object');
   // --- final review fixes ---
   // C1) goto while paused / e-stopped (cancel -> back to dock) must not drive the robot; resume does
@@ -163,22 +165,22 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.deepStrictEqual(H({ cmd: 'resume', robot: 'R1' }).mqtt, [{ topic: GO, payload: T01 }]);
   // I2) state restored after a Node-RED restart: offline until the broker re-delivers $state
   fresh(); st.boot = 'previous process';
-  assert.deepStrictEqual(H({ cmd: 'tick' }).events[0].robots, []);
+  assert.deepStrictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots, []);
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
-  assert.strictEqual(H({ cmd: 'tick' }).events[0].robots.length, 1);
+  assert.strictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots.length, 1);
   //     broker connection lost -> offline
   H({ cmd: 'link', up: false });
-  assert.deepStrictEqual(H({ cmd: 'tick' }).events[0].robots, []);
+  assert.deepStrictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots, []);
   // I3) no battery level yet -> not reported (0 % would lock it into charging)
   st = V.init(SITE);
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' }); status('docked');
-  assert.deepStrictEqual(H({ cmd: 'tick' }).events[0].robots, []);
+  assert.deepStrictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots, []);
   // I4) map-data lags the status: stopped "far" waits for a fresh position before blocking
   const zlib = require('zlib');
   const mapAt = (x, y) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/MapData/map-data',
     payload: zlib.deflateSync(JSON.stringify({ entities: [{ type: 'robot_position', points: [x, y] }] })) });
   fresh(); pos(3000, 3000); goto('T01', 3); status('moving'); now += 3000;
-  assert.deepStrictEqual(status('idle').events, []);
+  assert.deepStrictEqual(noLog(status('idle')).events, []);
   assert.strictEqual(tel().blocked, false);
   assert.deepStrictEqual(mapAt(1450, 1850).events, [{ event: 'arrived', robot: 'R1', token: 3 }]);
   fresh(); pos(3000, 3000); goto('T01', 4); status('moving'); now += 3000; status('idle');
@@ -197,7 +199,7 @@ const PTS = SITE.robots[0].valetudo.points;
   const err = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/error_description', payload: s });
   // 1) leaving the dock: docked -> idle -> moving. The idle before 'moving' is not a trip end.
   fresh(); goto('kitchen', 20); now += 2000;
-  assert.deepStrictEqual(status('idle').events, []);                       // no map data: no fake arrival
+  assert.deepStrictEqual(noLog(status('idle')).events, []);                       // no map data: no fake arrival
   status('moving'); now += 3000; pos(2150, 2700);
   assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 20 }]);
   fresh(); pos(1000, 1000); goto('kitchen', 21); now += 2000;
@@ -208,7 +210,7 @@ const PTS = SITE.robots[0].valetudo.points;
   fresh(); goto('kitchen', 22);
   now += 9000; H({ cmd: 'tick' }); assert.strictEqual(tel().blocked, false);
   now += 1000; H({ cmd: 'tick' });
-  t = tel(); assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'object');   // never moved, no position: not "arrived"
+  t = tel(); assert.strictEqual(t.nav, 'wait'); assert.strictEqual(t.why, 'object');   // never moved, no position: not "arrived", retried
   fresh(); goto('kitchen', 23); pos(2150, 2700); now += 10000;             // short trip ended inside the window
   assert.deepStrictEqual(H({ cmd: 'tick' }).events.filter(e => e.event === 'arrived'), [{ event: 'arrived', robot: 'R1', token: 23 }]);
   //    trip that never ends -> blocked after 3 min
@@ -219,10 +221,9 @@ const PTS = SITE.robots[0].valetudo.points;
   fresh(); goto('T01', 25); now += 2000; status('moving'); now += 3000;
   err('Wheel stuck'); status('error');
   assert.strictEqual(tel().blocked, true);
-  err('No error');
-  assert.deepStrictEqual(status('idle').events, []);
-  assert.strictEqual(tel().blocked, true);
-  assert.deepStrictEqual(H({ cmd: 'sim', robot: 'R1', fault: 'clear' }).mqtt, [{ topic: GO, payload: T01 }]);   // only clear/resume restart it
+  assert.deepStrictEqual(err('No error').mqtt, [{ topic: GO, payload: T01 }]);   // fault fixed at the robot: trip resumes by itself
+  assert.deepStrictEqual(noLog(status('idle')).events, []);                              // stale idle right after the resend: no fake arrival
+  assert.strictEqual(tel().blocked, false);
   // 5) empty / junk battery payload (retained message cleared) keeps the last level
   fresh();
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '' });
@@ -277,7 +278,7 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.strictEqual(JSON.stringify(st).includes('"px"'), false, 'map layers never stored in state');
   out = H0({ cmd: 'tick' });
   assert.deepStrictEqual(out.maps, {});
-  assert.deepStrictEqual(out.events[0].robots[0].pos, { x: 120, y: 340, angle: 90 });
+  assert.deepStrictEqual(out.events.find(e => e.event === 'telemetry').robots[0].pos, { x: 120, y: 340, angle: 90 });
   assert.deepStrictEqual(H0({ cmd: 'mqtt', topic, payload: Buffer.from('garbage') }).maps, {});
   console.log('✓ compact map / telemetry pos');
 }
@@ -293,6 +294,100 @@ const PTS = SITE.robots[0].valetudo.points;
   H({ cmd: 'goto', robot: 'R1', to: 'kitchen', token: 1 });
   assert.deepStrictEqual(H({ cmd: 'probe', robot: 'R1', x: 1, y: 2 }).mqtt, []);   // busy: ignored
   console.log('✓ probe');
+}
+
+{
+  // Task 13: blocked auto-recovery — wait / retry / blocked / stuck watchdog / retryable errors / acceptCm
+  const GO = 'valetudo/Bot/GoToLocationCapability/go/set', OP = 'valetudo/Bot/BasicControlCapability/operation/set';
+  const T01 = '{"coordinates":{"x":1450,"y":1850}}', KITCHEN = '{"coordinates":{"x":2150,"y":2700}}';
+  let st, now, site = SITE;
+  const H = (i) => V.handle(st, site, i, now);
+  const status = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: s });
+  const err = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/error_description', payload: s });
+  const goto = (to, token) => H({ cmd: 'goto', robot: 'R1', to, x: 0, y: 0, token });
+  const tick = () => H({ cmd: 'tick' });
+  const tel = () => tick().events.find(e => e.event === 'telemetry').robots[0];
+  const logs = r => r.events.filter(e => e.event === 'log').map(e => e.text);
+  const pos = (x, y) => { st.robots.R1.pos = { x, y }; };
+  const fresh = (s = SITE) => {
+    site = s; st = V.init(site); now = 1e12;
+    H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' }); status('docked');
+    H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '90' });
+  };
+  const farStop = () => { status('moving'); now += 3000; pos(3000, 3000); status('idle'); now += 5000; tick(); };   // ends 200+ cm away -> waiting
+
+  // (B) idle away from the goal -> wait, retry every 15 s, blocked after 4 tries, keeps retrying every 60 s, then arrives
+  fresh(); goto('T01', 1); now += 2000; farStop();
+  let r = tick(); let t = r.events.find(e => e.event === 'telemetry').robots[0];
+  assert.strictEqual(t.nav, 'wait'); assert.strictEqual(t.blocked, false); assert.strictEqual(t.why, 'object');
+  assert.deepStrictEqual(tick().mqtt, []);
+  now += 15000; r = tick();
+  assert.deepStrictEqual(r.mqtt, [{ topic: GO, payload: T01 }]);
+  assert.ok(logs(r).some(x => /lần 1/.test(x)), 'retry logged');
+  for (let i = 2; i <= 4; i++) { now += 15000; r = tick(); assert.deepStrictEqual(r.mqtt, [{ topic: GO, payload: T01 }], 'retry ' + i); assert.strictEqual(tel().blocked, false); }
+  now += 15000; r = tick();   // 5th attempt: give up -> blocked, but still resent
+  assert.deepStrictEqual(r.mqtt, [{ topic: GO, payload: T01 }]);
+  t = tel(); assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'object');
+  now += 15000; assert.deepStrictEqual(tick().mqtt, []);   // slow retries now
+  now += 45000; assert.deepStrictEqual(tick().mqtt, [{ topic: GO, payload: T01 }]);
+  status('moving'); assert.strictEqual(tel().blocked, false); assert.strictEqual(tel().nav, 'moving');   // the way is clear: back to normal
+  now += 3000; pos(1455, 1850);
+  assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 1 }]);
+  console.log('✓ wait / retry / blocked / self-clear');
+
+  // acceptCm: after the tries are used up, stopping within 80 cm counts as arrived (0 = off)
+  fresh(); goto('T01', 2); now += 2000; farStop();
+  for (let i = 1; i <= 4; i++) { now += 15000; tick(); }
+  assert.strictEqual(st.robots.R1.tries, 4);
+  status('moving'); now += 3000; pos(1500, 1850); status('idle'); now += 5000; r = tick();   // 5 s grace for a fresh position
+  assert.deepStrictEqual(r.events.filter(e => e.event === 'arrived'), [{ event: 'arrived', robot: 'R1', token: 2 }]);
+  assert.ok(logs(r).some(x => /coi là đã tới/.test(x)));
+  const OFF = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, acceptCm: 0 } }, SITE.robots[1]] };
+  fresh(OFF); goto('T01', 3); now += 2000; farStop();
+  for (let i = 1; i <= 4; i++) { now += 15000; tick(); }
+  status('moving'); now += 3000; pos(1500, 1850); status('idle'); now += 5000; r = tick();
+  assert.deepStrictEqual(r.events.filter(e => e.event === 'arrived'), []);
+  assert.strictEqual(tel().nav, 'wait');
+  console.log('✓ acceptCm');
+
+  // (A) moving but not getting anywhere for 20 s -> STOP, wait, retry
+  fresh(); pos(1000, 1000); goto('T01', 4); now += 2000; status('moving'); pos(1010, 1005);
+  now += 19000; assert.deepStrictEqual(tick().mqtt, []);
+  now += 1000; r = tick();
+  assert.deepStrictEqual(r.mqtt, [{ topic: OP, payload: 'STOP' }]);
+  assert.ok(logs(r).some(x => /đứng yên/.test(x)));
+  assert.strictEqual(tel().nav, 'wait');
+  // progress resets the watchdog
+  fresh(); pos(1000, 1000); goto('T01', 5); now += 2000; status('moving');
+  now += 15000; pos(1100, 1000); tick(); now += 15000; assert.deepStrictEqual(tick().mqtt, []);
+  console.log('✓ stuck watchdog');
+
+  // (C) retryable Valetudo errors wait; others block; error cleared -> resend
+  fresh(); goto('T01', 6); now += 2000; status('moving'); now += 3000;
+  err('Cannot reach target'); status('error');
+  t = tel(); assert.strictEqual(t.nav, 'wait'); assert.strictEqual(t.blocked, false);
+  fresh(); goto('T01', 7); now += 2000; status('moving'); now += 3000;
+  err('Wheel lost floor contact'); status('error');
+  assert.strictEqual(tel().blocked, true);
+  assert.deepStrictEqual(err('No error').mqtt, [{ topic: GO, payload: T01 }]);
+  console.log('✓ retryable errors');
+
+  // Review Focus 4: a new goal while waiting resets the retries; no stale retry of the old goal
+  fresh(); goto('T01', 8); now += 2000; farStop();
+  now += 15000; tick(); now += 15000; tick();
+  assert.strictEqual(st.robots.R1.tries, 2);
+  assert.deepStrictEqual(goto('kitchen', 9).mqtt, [{ topic: GO, payload: KITCHEN }]);
+  assert.strictEqual(st.robots.R1.tries, 0); assert.strictEqual(tel().nav, 'moving');
+  now += 15000; assert.deepStrictEqual(tick().mqtt, []);
+  // paused while waiting: no retry; resume retries at once
+  fresh(); goto('T01', 10); now += 2000; farStop();
+  H({ cmd: 'stop', robot: 'R1' });
+  now += 30000; assert.deepStrictEqual(tick().mqtt, []);
+  assert.deepStrictEqual(H({ cmd: 'resume', robot: 'R1' }).mqtt, [{ topic: GO, payload: T01 }]);
+  // abnormal trip end is logged with status / position / distance
+  fresh(); goto('T01', 11); now += 2000; status('moving'); now += 3000; pos(3000, 3000); status('idle'); now += 5000; r = tick();
+  assert.ok(logs(r).some(x => /dừng ở 3000,3000/.test(x) && /status=idle/.test(x)), JSON.stringify(logs(r)));
+  console.log('✓ new goal / paused / trip-end log');
 }
 
 {
@@ -332,16 +427,16 @@ const PTS = SITE.robots[0].valetudo.points;
   // per-robot knobs in site.json: valetudo.nomoveSec / tripSec (like arriveCm)
   const K = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { topic: 'valetudo/Bot', nomoveSec: 20, tripSec: 60, points: PTS } }] };
   let now = 1e12; const st = V.init(K);
-  const H = (i) => V.handle(st, K, i, now), tel = () => H({ cmd: 'tick' }).events[0].robots[0];
+  const H = (i) => V.handle(st, K, i, now), tel = () => H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0];
   const status = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: s });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' }); status('docked');
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '90' });
   H({ cmd: 'goto', robot: 'R1', to: 'kitchen', token: 1 });
-  now += 15000; assert.strictEqual(tel().blocked, false);   // default 10 s would have blocked
-  now += 5000; assert.strictEqual(tel().blocked, true);
+  now += 15000; assert.strictEqual(tel().nav, 'moving');   // default 10 s would have given up
+  now += 5000; assert.strictEqual(tel().nav, 'wait');
   H({ cmd: 'sim', robot: 'R1', fault: 'clear' }); status('moving');
-  now += 59000; assert.strictEqual(tel().blocked, false);
-  now += 1000; assert.strictEqual(tel().blocked, true);
+  now += 59000; assert.strictEqual(tel().nav, 'moving');
+  now += 1000; assert.strictEqual(tel().nav, 'wait');   // tripSec: last-resort net
   // knob edited on the device + restart: saved state picks up the new value
   const K2 = { ...K, robots: [{ ...K.robots[0], valetudo: { ...K.robots[0].valetudo, arriveCm: 80 } }] };
   V.handle(st, K2, { cmd: 'tick' }, now);
@@ -357,10 +452,10 @@ const PTS = SITE.robots[0].valetudo.points;
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'docked' });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '87' });
   const K2 = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, arriveCm: 80 } }, SITE.robots[1]] };
-  const t = H({ cmd: 'tick' }, K2).events[0].robots;
+  const t = H({ cmd: 'tick' }, K2).events.find(e => e.event === 'telemetry').robots;
   assert.strictEqual(t.length, 1); assert.strictEqual(t[0].battery, 87); assert.strictEqual(st.robots.R1.arriveCm, 80);
   // a new topic is a different robot: nothing known until it speaks
   const K3 = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, topic: 'valetudo/Other' } }, SITE.robots[1]] };
-  assert.deepStrictEqual(H({ cmd: 'tick' }, K3).events[0].robots, []);
+  assert.deepStrictEqual(H({ cmd: 'tick' }, K3).events.find(e => e.event === 'telemetry').robots, []);
   console.log('✓ knob edit keeps ingested state; topic change does not');
 }

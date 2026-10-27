@@ -75,10 +75,12 @@ function parseMapData(payload) {
 const parseMap = payload => parseMapData(payload).pos;
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
-const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000;
-// Per-robot knobs in site.json robots[].valetudo: arriveCm, nomoveSec (no 'moving' after a command), tripSec.
+const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000, SLOW_RETRY = 4;
+// Per-robot knobs in robots[].valetudo (defaults in lib/site.js KNOBS): arriveCm, nomoveSec, tripSec,
+// retrySec, retryMax, stuckSec, progressCm, acceptCm, retryErr.
 const knob = (r, k, d) => (r.valetudo && Number.isFinite(r.valetudo[k]) ? r.valetudo[k] : d);
 const arriveCm = (site, r) => knob(r, 'arriveCm', 40);
+const RETRY_ERR = 'unreach|target|navigat|path';
 
 // Saved state outlives the process (flow context on disk): after a restart nothing is "online" until the
 // broker (re)delivers $state, so a robot that went away meanwhile shows up as offline.
@@ -87,55 +89,90 @@ const ours = r => r.driver === 'valetudo' && !!r.valetudo && typeof r.valetudo.t
 const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id, r.dock, r.valetudo]));   // topic or a knob edited -> rebuild
 
 // What the robot has told us: survives a rebuild (knob / points edited) as long as the topic is the same robot.
-const INGESTED = ['status', 'err', 'battery', 'pos', 'online'];
+const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'mapMeta'];
 function init(site, old) {
   const st = { key: robotsKey(site), boot: BOOT, robots: {} };
   for (const r of site.robots) {
     if (r.driver !== 'valetudo') continue;
     if (!ours(r)) { console.warn(`[valetudo] ${r.id}: thiếu "valetudo": { "topic": "<prefix>/<identifier>" } trong site.json — bỏ qua robot này`); continue; }
+    let retryRe; try { retryRe = String(r.valetudo.retryErr || RETRY_ERR); new RegExp(retryRe, 'i'); } catch (e) { retryRe = RETRY_ERR; }
     const b = st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r),
-      nomoveMs: knob(r, 'nomoveSec', 10) * 1000, tripMs: knob(r, 'tripSec', 180) * 1000, status: null, err: null,
-      battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, seenMoving: false, checkUntil: 0,
-      paused: false, blocked: false, why: null, ...calib(site, r) };
+      nomoveMs: knob(r, 'nomoveSec', 10) * 1000, tripMs: knob(r, 'tripSec', 180) * 1000,
+      retryMs: knob(r, 'retrySec', 15) * 1000, retryMax: knob(r, 'retryMax', 4), stuckMs: knob(r, 'stuckSec', 20) * 1000,
+      progressCm: knob(r, 'progressCm', 15), acceptCm: knob(r, 'acceptCm', 80), retryRe,
+      status: null, err: null, errRetry: false, battery: null, pos: null, online: false,
+      goal: null, pending: false, pendingSince: 0, sentAt: 0, seenMoving: false, checkUntil: 0,
+      paused: false, blocked: false, why: null, waiting: false, tries: 0, retryAt: 0, lastPos: null, progressAt: 0, ...calib(site, r) };
     const prev = old && old.robots && old.robots[r.id];
-    if (prev && prev.topic === b.topic) for (const k of INGESTED) b[k] = prev[k];
+    if (prev && prev.topic === b.topic) for (const k of INGESTED) if (prev[k] !== undefined) b[k] = prev[k];
   }
   return st;
 }
 
 const op = (b, cmd) => ({ topic: b.topic + '/BasicControlCapability/operation/set', payload: cmd });
+const dist = (b) => (b.pos && b.goal && b.goal.coords ? Math.hypot(b.pos.x - b.goal.coords.x, b.pos.y - b.goal.coords.y) : null);
+const where = (b) => (b.pos ? `${Math.round(b.pos.x)},${Math.round(b.pos.y)}` : '?');
+const say = (events, id, text) => events.push({ event: 'log', robot: id, text: `${id}: ${text}` });
 // The publish that drives the robot to its goal.
 function send(b, now) {
-  b.sentAt = now; b.seenMoving = false; b.checkUntil = 0;
+  b.sentAt = now; b.seenMoving = false; b.checkUntil = 0; b.waiting = false; b.retryAt = 0;
+  b.lastPos = b.pos && { x: b.pos.x, y: b.pos.y }; b.progressAt = now;
   const g = b.goal;
   return g.home ? op(b, 'HOME')
     : { topic: b.topic + '/GoToLocationCapability/go/set', payload: JSON.stringify({ coordinates: { x: Math.round(g.coords.x), y: Math.round(g.coords.y) } }) };
 }
-const near = (b) => !!b.pos && !!b.goal.coords && Math.hypot(b.pos.x - b.goal.coords.x, b.pos.y - b.goal.coords.y) <= b.arriveCm;
+const near = (b) => { const d = dist(b); return d !== null && d <= b.arriveCm; };
 function arrive(id, b, events) {
   events.push({ event: 'arrived', robot: id, token: b.goal.token });
-  b.goal = null; b.blocked = false; b.why = null; b.checkUntil = 0;
+  Object.assign(b, { goal: null, blocked: false, why: null, checkUntil: 0, waiting: false, tries: 0, retryAt: 0 });
 }
+// Hard stop: a fault only a person fixes (wheel, lifted, bin…) or the retries are used up. Stays until resume / clear /
+// the fault clears — or, when still 'waiting', the slow retry gets the robot moving again.
 const block = (b) => { b.blocked = true; b.why = 'object'; b.checkUntil = 0; };
+// Soft stop: the way is blocked (idle away from the goal, no progress, "cannot reach target"). The robot asks for room
+// (nav 'wait') and the trip is resent after retrySec; after retryMax tries it is reported blocked and retried slowly.
+function wait(id, b, now, events, why) {
+  if (b.waiting) return;
+  b.waiting = true; b.why = 'object'; b.checkUntil = 0; b.retryAt = now + b.retryMs;
+  const d = dist(b);
+  say(events, id, `chuyến tới ${b.goal.to} ${why} ở ${where(b)}${d !== null ? ` (cách ${Math.round(d)} cm)` : ''}, status=${b.status}, lỗi=${b.err || '-'}`);
+}
 // Stopped away from the goal by the last known position: arrived after all if a fresh position says so.
 function check(id, b, now, events) {
   if (near(b)) arrive(id, b, events);
-  else if (now >= b.checkUntil) block(b);
+  else if (now >= b.checkUntil) stopped(id, b, now, events);
 }
-// The robot stopped (trust: after it was seen moving): arrived, blocked, or wait for a fresh position.
+// Stopped short of the goal, no fault: close enough after the tries are used up, else wait and retry.
+function stopped(id, b, now, events) {
+  const d = dist(b);
+  if (b.tries >= b.retryMax && b.acceptCm > 0 && d !== null && d <= b.acceptCm) {
+    say(events, id, `dừng cách ${b.goal.to} ~${Math.round(d)} cm sau ${b.tries} lần thử — coi là đã tới`);
+    return arrive(id, b, events);
+  }
+  wait(id, b, now, events, 'dừng');
+}
+// The robot stopped (trust: after it was seen moving): arrived, blocked / waiting, or wait for a fresh position.
 function end(id, b, now, events, trust) {
-  if (b.status === 'error' || b.err) block(b);
-  else if (b.goal.home) b.status === 'docked' ? arrive(id, b, events) : block(b);
+  if (b.status === 'error' || b.err) fault(id, b, now, events);
+  else if (b.goal.home) b.status === 'docked' ? arrive(id, b, events) : wait(id, b, now, events, 'dừng');
   else if (near(b) || (trust && !b.pos)) arrive(id, b, events);   // no position (map data off): trust status
   else if (b.pos) b.checkUntil = now + POS_WAIT_MS;   // map-data may lag the status
-  else block(b);
+  else wait(id, b, now, events, 'không chạy');
 }
-// Sets off towards b.goal (goto / resume / clear): stop first if moving, arrive at once if already there.
+// A Valetudo error while on a trip: "cannot reach target"-like errors are retried, anything else needs a person.
+function fault(id, b, now, events) {
+  if (b.err && b.errRetry) wait(id, b, now, events, 'báo lỗi');
+  else { if (!b.blocked) say(events, id, `chuyến tới ${b.goal.to} dừng ở ${where(b)}, status=${b.status}, lỗi=${b.err || '-'} — cần nhân viên`); block(b); }
+}
+// Sets off towards b.goal (goto / resume / clear / retry): stop first if moving, arrive at once if already there.
 function start(id, b, now, events, mqtt) {
   if (MOVING.includes(b.status)) { b.pending = true; b.pendingSince = now; mqtt.push(op(b, 'STOP')); }
   else if (b.goal.home ? b.status === 'docked' : near(b)) arrive(id, b, events);
   else mqtt.push(send(b, now));
 }
+// Progress watchdog bookkeeping: remember when the robot last moved more than progressCm.
+const progress = (b, now) => { if (b.pos && (!b.lastPos || Math.hypot(b.pos.x - b.lastPos.x, b.pos.y - b.lastPos.y) > b.progressCm)) { b.lastPos = { x: b.pos.x, y: b.pos.y }; b.progressAt = now; } };
+const restart = (b) => { b.blocked = false; b.why = null; b.waiting = false; b.tries = 0; b.retryAt = 0; };
 
 // input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload} | {cmd:'link', up}.
 // Returns {events, mqtt, maps}; maps[robotId] = compact map when one arrived in this call (kept out of st: it is big).
@@ -147,9 +184,9 @@ function handle(st, site, input, now) {
     case 'goto': {
       if (!b) break;
       // same destination resent (orchestrator re-syncs goals after a map change): keep driving, no STOP
-      if (b.goal && b.goal.to === input.to && !b.blocked) { b.goal.token = input.token; break; }
+      if (b.goal && b.goal.to === input.to && !b.blocked && !b.waiting) { b.goal.token = input.token; break; }
       b.goal = { to: input.to, token: input.token, home: input.to === b.dock, coords: b.points[input.to] || null };
-      b.blocked = false; b.why = null; b.checkUntil = 0;
+      restart(b); b.checkUntil = 0;
       if (!b.goal.home && !b.goal.coords) { b.pending = false; b.blocked = true; b.why = 'noroute'; break; }
       if (b.paused) { b.pending = false; break; }   // paused / e-stopped: only resume may drive it
       if (b.pending) break;   // already waiting for the robot to stop: the latest goal wins
@@ -164,15 +201,15 @@ function handle(st, site, input, now) {
     case 'resume':
       if (!b) break;
       b.paused = false;
-      if (b.goal && b.why !== 'noroute') { b.blocked = false; b.why = null; start(id, b, now, events, mqtt); }
+      if (b.goal && b.why !== 'noroute') { restart(b); start(id, b, now, events, mqtt); }
       break;
-    case 'sim':   // 'clear' = staff cleared the way ("Đã dọn lối đi"): try again. Other faults are simulator-only.
-      if (b && input.fault === 'clear' && b.goal && b.why === 'object' && !b.paused) { b.blocked = false; b.why = null; start(id, b, now, events, mqtt); }
+    case 'sim':   // 'clear' = staff cleared the way ("Đã dọn lối đi"): try again now. Other faults are simulator-only.
+      if (b && input.fault === 'clear' && b.goal && b.why === 'object' && !b.paused) { restart(b); start(id, b, now, events, mqtt); }
       break;
     case 'reset':   // demo reset: forget the trip and stop the robot where it is
       for (const r of Object.values(st.robots)) {
         if (r.goal || MOVING.includes(r.status)) mqtt.push(op(r, 'STOP'));
-        Object.assign(r, { goal: null, pending: false, checkUntil: 0, paused: false, blocked: false, why: null });
+        Object.assign(r, { goal: null, pending: false, checkUntil: 0, paused: false, blocked: false, why: null, waiting: false, tries: 0, retryAt: 0 });
       }
       break;
     case 'mqtt': ingest(st, input, now, events, mqtt, maps); break;
@@ -180,10 +217,27 @@ function handle(st, site, input, now) {
     case 'tick':
       for (const [rid, r] of Object.entries(st.robots)) {
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
-        if (!r.goal || r.paused || r.blocked || r.pending) continue;
+        if (!r.goal || r.paused || r.pending) continue;
+        if (r.waiting) {   // retry: every retrySec, then every retrySec x 4 once reported blocked
+          if (now < r.retryAt) continue;
+          r.tries++;
+          if (r.tries > r.retryMax && !r.blocked) { block(r); say(events, rid, `vẫn không đi được tới ${r.goal.to} sau ${r.retryMax} lần thử — cần nhân viên dọn lối`); }
+          else if (!r.blocked) say(events, rid, `thử đi tiếp lần ${r.tries} tới ${r.goal.to}`);
+          const slow = r.blocked;
+          mqtt.push(send(r, now));
+          r.waiting = true; r.retryAt = now + r.retryMs * (slow ? SLOW_RETRY : 1);
+          continue;
+        }
+        if (r.blocked) continue;   // hard blocked: resume / clear / the fault clearing restart it
+        progress(r, now);
         if (r.checkUntil) { if (now >= r.checkUntil) check(rid, r, now, events); }
         else if (!r.seenMoving && STOPPED.includes(r.status) && now - r.sentAt >= r.nomoveMs) end(rid, r, now, events, false);
-        else if (now - r.sentAt >= r.tripMs) block(r);
+        else if (r.seenMoving && MOVING.includes(r.status) && r.pos && now - r.progressAt >= r.stuckMs) {   // driving but going nowhere
+          mqtt.push(op(r, 'STOP'));
+          say(events, rid, `đứng yên ${Math.round(r.stuckMs / 1000)} s trên đường tới ${r.goal.to}`);
+          wait(rid, r, now, events, 'kẹt');
+        }
+        else if (now - r.sentAt >= r.tripMs) { mqtt.push(op(r, 'STOP')); wait(rid, r, now, events, 'quá giờ'); }
       }
       events.push(telemetry(st, site));
       break;
@@ -197,21 +251,36 @@ function ingest(st, input, now, events, mqtt, maps) {
     if (!input.topic.startsWith(b.topic + '/')) continue;
     const key = input.topic.slice(b.topic.length + 1), v = String(input.payload);
     if (key === '$state') b.online = v === 'ready';
-    else if (key === 'StatusStateAttribute/error_description') b.err = v && v !== 'No error' ? v : null;
+    else if (key === 'StatusStateAttribute/error_description') {
+      const was = b.err;
+      b.err = v && v !== 'No error' ? v : null;
+      b.errRetry = !!b.err && new RegExp(b.retryRe, 'i').test(b.err);
+      if (!b.goal || b.paused) continue;
+      if (b.err) { if (b.errRetry) { if (b.blocked && !b.waiting) { b.blocked = false; } wait(id, b, now, events, 'báo lỗi'); } else { if (!b.blocked) say(events, id, `lỗi "${b.err}" trên đường tới ${b.goal.to} — cần nhân viên`); b.waiting = false; block(b); } }
+      else if (was && b.blocked && !b.waiting) { restart(b); start(id, b, now, events, mqtt); }   // fault fixed at the robot: carry on
+    }
     else if (key === 'BatteryStateAttribute/level') { if (v.trim() !== '' && Number.isFinite(Number(v))) b.battery = Number(v); }   // '' = retained cleared
     else if (key === 'MapData/map-data') {
       const { pos, map } = parseMapData(input.payload);
       b.pos = pos || b.pos;
       if (map) { maps[id] = { ...map, t: now }; b.mapMeta = { size: map.size, charger: map.charger }; }
-      if (b.checkUntil && b.goal && !b.blocked) check(id, b, now, events);
+      progress(b, now);
+      if (b.checkUntil && b.goal && !b.blocked && !b.waiting) check(id, b, now, events);
     }
     else if (key === 'StatusStateAttribute/status') {
       b.status = v;
-      if (!b.goal || b.paused || b.blocked) continue;   // blocked (incl. noroute): only resume / clear restart the trip
+      if (!b.goal || b.paused) continue;
       if (b.pending) { if (STOPPED.includes(v)) { b.pending = false; mqtt.push(send(b, now)); } continue; }
-      if (MOVING.includes(v)) { b.seenMoving = true; b.checkUntil = 0; continue; }
+      if (MOVING.includes(v)) {   // on its way (again): any wait / blocked is over
+        if (!b.seenMoving) b.progressAt = now;
+        b.seenMoving = true; b.checkUntil = 0;
+        if ((b.waiting || b.blocked) && b.why !== 'noroute') { b.waiting = false; b.blocked = false; b.why = null; b.retryAt = 0; }   // tries are kept until it arrives: acceptCm needs them
+        continue;
+      }
+      if (b.why === 'noroute') continue;
       if (now - b.sentAt < STALE_MS) continue;   // a stopped status this soon may be the old one
-      if (v === 'error') block(b);
+      if (v === 'error') fault(id, b, now, events);
+      else if (b.waiting || b.blocked) continue;   // already handled; the retry timer / a person restarts it
       else if (STOPPED.includes(v) && b.seenMoving) end(id, b, now, events, true);   // idle before 'moving' (leaving the dock) is no trip end
     }
   }
@@ -223,9 +292,10 @@ function telemetry(st, site) {
     if (!b.online || b.status === null || b.battery === null) continue;   // not heard from (yet): orchestrator shows offline
     const d = site.points[b.dock] || {};
     const p = b.pos && b.T ? toSite(b.T, b.pos) : { x: d.x || 0, y: d.y || 0 };
-    const blocked = b.blocked || !!b.err, moving = !!b.goal && !b.paused && !blocked;
-    robots.push({ id, x: p.x, y: p.y, battery: b.battery, moving, blocked, nav: moving ? 'moving' : 'idle',
-      why: b.err ? 'object' : b.why, path: [], rem: 0, pos: b.pos ? { x: b.pos.x, y: b.pos.y, angle: b.pos.angle ?? null } : null });
+    const blocked = b.blocked || (!!b.err && !b.errRetry), waiting = !!b.goal && b.waiting && !blocked && !b.paused;
+    const moving = !!b.goal && !b.paused && !blocked && !waiting;
+    robots.push({ id, x: p.x, y: p.y, battery: b.battery, moving, blocked, nav: waiting ? 'wait' : moving ? 'moving' : 'idle',
+      why: b.err && !b.errRetry ? 'object' : b.why, path: [], rem: 0, pos: b.pos ? { x: b.pos.x, y: b.pos.y, angle: b.pos.angle ?? null } : null });
   }
   return { event: 'telemetry', robots };
 }

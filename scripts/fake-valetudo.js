@@ -3,6 +3,8 @@
 //   mosquitto -p 1884 &   # the port Node-RED's mqtt-broker node uses
 //   node scripts/fake-valetudo.js [valetudo/Bot] [mqtt://127.0.0.1:1884]
 // go/set -> moving, 4 s later idle at the target; HOME -> returning, 4 s later docked; STOP -> idle.
+// Blocked scenario: a target with an ODD x is "blocked" the first time — moving 2 s, then idle 150 cm short (or, with
+// FAKE_ERR=1, status error + "Cannot reach target"); the second go/set to the same spot arrives.
 const mqtt = require('mqtt'), zlib = require('zlib');
 const T = process.argv[2] || 'valetudo/Bot';
 const c = mqtt.connect(process.argv[3] || 'mqtt://127.0.0.1:1884', { will: { topic: T + '/$state', payload: 'lost', retain: true } });
@@ -20,9 +22,18 @@ const LAYERS = [
 let angle = 0;
 const map = () => pub('MapData/map-data', zlib.deflateSync(JSON.stringify({ size: { x: 3000, y: 2000 }, pixelSize: PX, layers: LAYERS, metaData: { version: 2 },
   entities: [{ type: 'robot_position', points: [pos.x, pos.y], metaData: { angle } }, { type: 'charger_location', points: [dock.x, dock.y] }] })));
+let lastBlocked = null;
 function drive(moving, to, end) {
   clearTimeout(timer); state(moving);
-  timer = setTimeout(() => { pos = { ...to }; map(); state(end); }, 4000);
+  const key = to.x + ',' + to.y, blocked = end === 'idle' && to.x % 2 === 1 && lastBlocked !== key;
+  if (!blocked) { timer = setTimeout(() => { pos = { ...to }; map(); state(end); }, 4000); return; }
+  lastBlocked = key;
+  timer = setTimeout(() => {
+    pos = { x: to.x - 150, y: to.y }; map();
+    if (process.env.FAKE_ERR) { pub('StatusStateAttribute/error_description', 'Cannot reach target'); state('error'); setTimeout(() => { pub('StatusStateAttribute/error_description', 'No error'); state('idle'); }, 1500); }
+    else state('idle');
+    console.log('   (blocked 150 cm short of the target; next go/set gets through)');
+  }, 2000);
 }
 c.on('connect', () => {
   pub('$state', 'ready'); pub('StatusStateAttribute/error_description', 'No error'); state(status); map();
