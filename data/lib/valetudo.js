@@ -47,23 +47,26 @@ function parseMap(payload) {
 }
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
-const STALE_MS = 1500, STOP_WAIT_MS = 3000;
+const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000;
 const arriveCm = (site, r) => (r.valetudo && r.valetudo.arriveCm) ?? 40;
 
+// Saved state outlives the process (flow context on disk): after a restart nothing is "online" until the
+// broker (re)delivers $state, so a robot that went away meanwhile shows up as offline.
+const BOOT = Date.now() + Math.random();
 const robotsKey = site => site.robots.filter(r => r.driver === 'valetudo').map(r => r.id + '@' + r.valetudo.topic).join();
 
 function init(site) {
-  const st = { key: robotsKey(site), robots: {} };
+  const st = { key: robotsKey(site), boot: BOOT, robots: {} };
   for (const r of site.robots) if (r.driver === 'valetudo')
     st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r), status: null, flag: null, err: null,
-      battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, paused: false, blocked: false, why: null };
+      battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, checkUntil: 0, paused: false, blocked: false, why: null };
   return st;
 }
 
 const op = (b, cmd) => ({ topic: b.topic + '/BasicControlCapability/operation/set', payload: cmd });
 // The publish that drives the robot to its goal.
 function send(b, now) {
-  b.sentAt = now;
+  b.sentAt = now; b.checkUntil = 0;
   const g = b.goal;
   return g.home ? op(b, 'HOME')
     : { topic: b.topic + '/GoToLocationCapability/go/set', payload: JSON.stringify({ coordinates: { x: Math.round(g.coords.x), y: Math.round(g.coords.y) } }) };
@@ -71,42 +74,61 @@ function send(b, now) {
 const near = (b) => !!b.pos && !!b.goal.coords && Math.hypot(b.pos.x - b.goal.coords.x, b.pos.y - b.goal.coords.y) <= b.arriveCm;
 function arrive(id, b, events) {
   events.push({ event: 'arrived', robot: id, token: b.goal.token });
-  b.goal = null; b.blocked = false; b.why = null;
+  b.goal = null; b.blocked = false; b.why = null; b.checkUntil = 0;
+}
+// Stopped away from the goal by the last known position: arrived after all if a fresh position says so.
+function check(id, b, now, events) {
+  if (near(b)) arrive(id, b, events);
+  else if (now >= b.checkUntil) { b.checkUntil = 0; b.blocked = true; b.why = 'object'; }
+}
+// Sets off towards b.goal (goto / resume / clear): stop first if moving, arrive at once if already there.
+function start(id, b, now, events, mqtt) {
+  if (MOVING.includes(b.status)) { b.pending = true; b.pendingSince = now; mqtt.push(op(b, 'STOP')); }
+  else if (b.goal.home ? b.status === 'docked' : near(b)) arrive(id, b, events);
+  else mqtt.push(send(b, now));
 }
 
-// input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload}. Returns {events, mqtt}.
+// input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload} | {cmd:'link', up}. Returns {events, mqtt}.
 function handle(st, site, input, now) {
   if (st.key !== robotsKey(site)) { for (const k of Object.keys(st)) delete st[k]; Object.assign(st, init(site)); }   // site.json edited
+  if (st.boot !== BOOT) { st.boot = BOOT; for (const r of Object.values(st.robots)) r.online = false; }
   const events = [], mqtt = [], id = input.robot, b = st.robots[id];
   switch (input.cmd) {
     case 'goto': {
       if (!b) break;
       // same destination resent (orchestrator re-syncs goals after a map change): keep driving, no STOP
-      if (b.goal && b.goal.to === input.to && !b.paused && !b.blocked) { b.goal.token = input.token; break; }
+      if (b.goal && b.goal.to === input.to && !b.blocked) { b.goal.token = input.token; break; }
       const { points } = calib(site);
       b.goal = { to: input.to, token: input.token, home: input.to === b.dock, coords: points[input.to] || null };
-      b.paused = false; b.blocked = false; b.why = null;
+      b.blocked = false; b.why = null; b.checkUntil = 0;
       if (!b.goal.home && !b.goal.coords) { b.pending = false; b.blocked = true; b.why = 'noroute'; break; }
+      if (b.paused) { b.pending = false; break; }   // paused / e-stopped: only resume may drive it
       if (b.pending) break;   // already waiting for the robot to stop: the latest goal wins
-      if (MOVING.includes(b.status)) { b.pending = true; b.pendingSince = now; mqtt.push(op(b, 'STOP')); }
-      else if (b.goal.home ? b.status === 'docked' : near(b)) arrive(id, b, events);
-      else mqtt.push(send(b, now));
+      start(id, b, now, events, mqtt);
       break;
     }
-    case 'stop': if (b) { b.paused = true; b.pending = false; mqtt.push(op(b, 'STOP')); } break;
+    case 'stop': if (b) { b.paused = true; b.pending = false; b.checkUntil = 0; mqtt.push(op(b, 'STOP')); } break;
     case 'resume':
       if (!b) break;
       b.paused = false;
-      if (b.goal && b.why !== 'noroute') { b.blocked = false; b.why = null; mqtt.push(send(b, now)); }
+      if (b.goal && b.why !== 'noroute') { b.blocked = false; b.why = null; start(id, b, now, events, mqtt); }
       break;
     case 'sim':   // 'clear' = staff cleared the way ("Đã dọn lối đi"): try again. Other faults are simulator-only.
-      if (b && input.fault === 'clear' && b.goal && b.why === 'object' && !b.paused) { b.blocked = false; b.why = null; mqtt.push(send(b, now)); }
+      if (b && input.fault === 'clear' && b.goal && b.why === 'object' && !b.paused) { b.blocked = false; b.why = null; start(id, b, now, events, mqtt); }
       break;
-    case 'reset': for (const r of Object.values(st.robots)) Object.assign(r, { goal: null, pending: false, paused: false, blocked: false, why: null }); break;
+    case 'reset':   // demo reset: forget the trip and stop the robot where it is
+      for (const r of Object.values(st.robots)) {
+        if (r.goal || MOVING.includes(r.status)) mqtt.push(op(r, 'STOP'));
+        Object.assign(r, { goal: null, pending: false, checkUntil: 0, paused: false, blocked: false, why: null });
+      }
+      break;
     case 'mqtt': ingest(st, input, now, events, mqtt); break;
+    case 'link': if (!input.up) for (const r of Object.values(st.robots)) r.online = false; break;   // broker connection lost
     case 'tick':
-      for (const r of Object.values(st.robots))
+      for (const [rid, r] of Object.entries(st.robots)) {
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
+        if (r.checkUntil && now >= r.checkUntil) check(rid, r, now, events);
+      }
       events.push(telemetry(st, site));
       break;
     // map / obstacle: the robot uses its own map and sensors.
@@ -122,14 +144,19 @@ function ingest(st, input, now, events, mqtt) {
     else if (key === 'StatusStateAttribute/flag') b.flag = v;
     else if (key === 'StatusStateAttribute/error_description') b.err = v && v !== 'No error' ? v : null;
     else if (key === 'BatteryStateAttribute/level') b.battery = +v;
-    else if (key === 'MapData/map-data') b.pos = parseMap(input.payload) || b.pos;
+    else if (key === 'MapData/map-data') {
+      b.pos = parseMap(input.payload) || b.pos;
+      if (b.checkUntil && b.goal) check(id, b, now, events);
+    }
     else if (key === 'StatusStateAttribute/status') {
       b.status = v;
       if (!b.goal || b.paused || b.why === 'noroute' || !STOPPED.includes(v)) continue;
       if (b.pending) { b.pending = false; mqtt.push(send(b, now)); continue; }
       if (now - b.sentAt < STALE_MS) continue;   // the robot may still report its old state
-      if (v !== 'error' && (b.goal.home ? v === 'docked' : !b.pos || near(b))) arrive(id, b, events);   // no position: trust status
-      else { b.blocked = true; b.why = 'object'; }
+      if (v === 'error' || (b.goal.home && v !== 'docked')) { b.blocked = true; b.why = 'object'; }
+      else if (b.goal.home || !b.pos || near(b)) arrive(id, b, events);   // no position: trust status
+      else b.checkUntil = now + POS_WAIT_MS;   // map-data may lag the status
+
     }
   }
 }
@@ -137,10 +164,10 @@ function ingest(st, input, now, events, mqtt) {
 function telemetry(st, site) {
   const { T } = calib(site), robots = [];
   for (const [id, b] of Object.entries(st.robots)) {
-    if (!b.online || b.status === null) continue;
+    if (!b.online || b.status === null || b.battery === null) continue;   // not heard from (yet): orchestrator shows offline
     const p = b.pos && T ? toSite(T, b.pos) : site.points[b.dock] || { x: 0, y: 0 };
     const blocked = b.blocked || !!b.err, moving = !!b.goal && !b.paused && !blocked;
-    robots.push({ id, x: p.x, y: p.y, battery: b.battery ?? 0, moving, blocked, nav: moving ? 'moving' : 'idle',
+    robots.push({ id, x: p.x, y: p.y, battery: b.battery, moving, blocked, nav: moving ? 'moving' : 'idle',
       why: b.err ? 'object' : b.why, path: [], rem: 0 });
   }
   return { event: 'telemetry', robots };

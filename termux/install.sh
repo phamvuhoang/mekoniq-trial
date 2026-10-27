@@ -10,6 +10,7 @@ ENV="$APP/.env"
 # Stop a running copy first so the update is picked up.
 pkill -f "start-nodered" 2>/dev/null || true
 pkill -f "node-red -u $APP" 2>/dev/null || true
+pkill -x mosquitto 2>/dev/null || true   # restarted by the boot script with the new mosquitto.conf
 
 if ! command -v node-red >/dev/null || ! node -v >/dev/null 2>&1; then
   # Full upgrade, not just `pkg update`: a fresh nodejs on an old libc++ fails with "CANNOT LINK EXECUTABLE node".
@@ -23,7 +24,8 @@ command -v mosquitto >/dev/null || pkg install -y -o Dpkg::Options::=--force-con
 
 mkdir -p "$APP"
 # site.json may hold the Valetudo topic / points entered on this device: keep a copy before overwriting.
-[ -f "$APP/site.json" ] && cp "$APP/site.json" "$APP/site.json.bak" && grep -q '"driver"' "$APP/site.json.bak" && SITE_BAK=1
+BAK="$APP/site.json.bak.$(date +%Y%m%d-%H%M%S)"
+[ -f "$APP/site.json" ] && grep -q '"driver"' "$APP/site.json" && cp "$APP/site.json" "$BAK" && SITE_BAK=1
 
 cp -r "$HERE/data/." "$APP/"
 # Mosquitto 2.x listens on localhost only by default; the robot connects over the Wi-Fi. LAN only, no login.
@@ -50,7 +52,8 @@ cat > "$HOME/.termux/boot/start-nodered" <<'BOOT'
 termux-wake-lock
 cd "$HOME/robot"
 . "$HOME/robot/.env"
-pgrep -x mosquitto >/dev/null || mosquitto -c "$HOME/robot/mosquitto.conf" -d
+# MQTT broker watchdog (Android may kill background processes).
+( while true; do pgrep -x mosquitto >/dev/null || mosquitto -c "$HOME/robot/mosquitto.conf" -d; sleep 15; done ) &
 while true; do
   node-red -u "$HOME/robot" -s "$HOME/robot/settings.js" >> "$HOME/robot/node-red.log" 2>&1
   sleep 5
@@ -75,5 +78,5 @@ MQTT broker cho Valetudo : $IP:1883
 Đặt IP cố định cho máy này trên router (DHCP reservation) trước khi khai vào Valetudo.
 Cấu hình robot Valetudo: ~/bundle/docs/valetudo-setup.md
 MSG
-[ -n "$SITE_BAK" ] && echo "⚠️ site.json cũ (có thể chứa cấu hình Valetudo) đã lưu ở ~/robot/site.json.bak — chép lại phần robots/valetudo nếu cần, rồi: pkill -f node-red"
+[ -n "$SITE_BAK" ] && echo "⚠️ site.json cũ (có thể chứa cấu hình Valetudo) đã lưu ở $BAK — chép lại phần robots/valetudo nếu cần, rồi: pkill -f node-red"
 true

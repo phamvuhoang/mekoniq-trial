@@ -14,7 +14,7 @@ curl -L -o robot-nodered.tar.gz <link> && rm -rf ~/bundle && mkdir ~/bundle \
 
 Script cài thêm Mosquitto (broker MQTT, cổng 1883) và in ra `MQTT broker cho Valetudo : <IP>:1883`.
 Đặt **IP cố định** cho điện thoại trên router (DHCP reservation) trước bước 1 — Valetudo lưu IP này, đổi IP là robot mất kết nối.
-Cài lại sẽ ghi đè `~/robot/site.json`; bản cũ được lưu ở `~/robot/site.json.bak`.
+Cài lại sẽ ghi đè `~/robot/site.json`; bản cũ (nếu đã cấu hình Valetudo) được lưu ở `~/robot/site.json.bak.<ngày-giờ>`.
 
 ## 1. Valetudo → MQTT
 

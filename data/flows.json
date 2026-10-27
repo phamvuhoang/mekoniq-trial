@@ -171,7 +171,7 @@
     "type": "function",
     "z": "tab",
     "name": "Robot Adapter (Valetudo)",
-    "func": "// ADAPTER: Valetudo robot over MQTT — logic in lib/valetudo.js (unit-tested by scripts/test-valetudo.js).\nconst { valetudo: V, site } = global.get('mekoniq');\nconst st = flow.get('val') || V.init(site);\nconst input = msg.topic === 'tick' ? { cmd: 'tick' }\n    : Buffer.isBuffer(msg.payload) || typeof msg.payload === 'string' ? { cmd: 'mqtt', topic: msg.topic, payload: msg.payload }\n    : msg.payload;\nconst r = V.handle(st, site, input, Date.now());\nflow.set('val', st);\nreturn [r.events.map(e => ({ topic: 'adapter', payload: e })), r.mqtt.map(m => ({ topic: m.topic, payload: m.payload }))];",
+    "func": "// ADAPTER: Valetudo robot over MQTT — logic in lib/valetudo.js (unit-tested by scripts/test-valetudo.js).\nconst { valetudo: V, site } = global.get('mekoniq');\nconst st = flow.get('val') || V.init(site);\nconst input = msg.status ? { cmd: 'link', up: msg.status.fill === 'green' }   // MQTT broker connection\n    : msg.topic === 'tick' ? { cmd: 'tick' }\n    : Buffer.isBuffer(msg.payload) || typeof msg.payload === 'string' ? { cmd: 'mqtt', topic: msg.topic, payload: msg.payload }\n    : msg.payload;\nconst r = V.handle(st, site, input, Date.now());\nflow.set('val', st);\nreturn [r.events.map(e => ({ topic: 'adapter', payload: e })), r.mqtt.map(m => ({ topic: m.topic, payload: m.payload }))];",
     "outputs": 2,
     "timeout": 0,
     "noerr": 0,
@@ -227,5 +227,21 @@
     "x": 690,
     "y": 360,
     "wires": []
+  },
+  {
+    "id": "mqtt_status",
+    "type": "status",
+    "z": "tab",
+    "name": "MQTT link",
+    "scope": [
+      "mqtt_in"
+    ],
+    "x": 140,
+    "y": 420,
+    "wires": [
+      [
+        "val"
+      ]
+    ]
   }
 ]
