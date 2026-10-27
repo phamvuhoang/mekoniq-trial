@@ -109,8 +109,8 @@ function view(r, m) {
       <p class="sub">Nhân viên kiểm tra quanh robot. Khi an toàn, nhả nút dừng và cho robot chạy tiếp.</p>
       ${tiles(armTile('rs', 'resume', '▶️', 'Nhả dừng · Chạy tiếp', 'Chạm lần nữa: đã kiểm tra an toàn', 'red'))}` };
   if (r.halt === 'blocked') {
-    if (r.why === 'noroute') return { bar: 'Không có lộ trình', tone: 'warn', body: `${face('sad')}<h1>Lối đi đã bị đóng</h1>
-      <p class="sub">Không có đường tới ${esc(pname(r.target))}. Quản lý mở lại lối đi trong “Thiết kế lộ trình”, hoặc chuyển xử lý thủ công.</p>` };
+    if (r.why === 'noroute') return { bar: 'Không có lộ trình', tone: 'warn', body: `${face('sad')}<h1>Không có đường tới ${esc(pname(r.target))}</h1>
+      <p class="sub">Quản lý kiểm tra lối đi trong “Thiết kế lộ trình” (robot Valetudo: toạ độ điểm trong site.json), hoặc chuyển xử lý thủ công.</p>` };
     return { bar: 'Cần nhân viên hỗ trợ', tone: 'warn', body: `${face('sad')}<h1>Xin nhường đường</h1>
       <p class="sub">Lối đi phía trước bị chặn và không còn đường vòng. Vui lòng dọn lối đi.</p>
       ${tiles(tile('clear', '🧹', 'Nhân viên: đã dọn lối đi', 'blue'))}` };
