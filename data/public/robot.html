@@ -65,6 +65,9 @@
 <script>
 // Which robot this tablet is mounted on: robot.html?robot=R2 (default R1).
 const ID = new URLSearchParams(location.search).get('robot') || 'R1';
+const cfg = () => (App.site && App.site.robots.find(r => r.id === ID)) || {};
+const isValetudo = () => cfg().driver === 'valetudo';
+const retrySec = () => (cfg().valetudo && cfg().valetudo.retrySec) || 15;
 const BY = 'Màn hình ' + ID;
 const $ = id => document.getElementById(id);
 document.title = 'MEKONIQ · Robot ' + ID;
@@ -110,13 +113,13 @@ function view(r, m) {
       ${tiles(armTile('rs', 'resume', '▶️', 'Nhả dừng · Chạy tiếp', 'Chạm lần nữa: đã kiểm tra an toàn', 'red'))}` };
   if (r.halt === 'blocked') {
     if (r.why === 'noroute') return { bar: 'Không có lộ trình', tone: 'warn', body: `${face('sad')}<h1>Không có đường tới ${esc(pname(r.target))}</h1>
-      <p class="sub">Quản lý kiểm tra lối đi trong “Thiết kế lộ trình” (robot Valetudo: toạ độ điểm trong site.json), hoặc chuyển xử lý thủ công.</p>` };
+      <p class="sub">Quản lý định vị điểm này trong “Cấu hình”${hasSim() ? ' hoặc kiểm tra lối đi trong “Thiết kế lộ trình”' : ''}, hoặc chuyển xử lý thủ công.</p>` };
     return { bar: 'Cần nhân viên hỗ trợ', tone: 'warn', body: `${face('sad')}<h1>Xin nhường đường</h1>
       <p class="sub">Lối đi phía trước bị chặn và không còn đường vòng. Vui lòng dọn lối đi.</p>
       ${tiles(tile('clear', '🧹', 'Nhân viên: đã dọn lối đi', 'blue'))}` };
   }
   if (r.nav === 'wait' && r.why !== 'robot' && !r.halt) return { bar: 'Robot đang chờ', tone: 'warn', body: `${face('wait')}<h1>Xin nhường đường</h1>
-      <p class="sub">${r.why === 'person' ? 'Có người phía trước — robot chờ quý khách đi qua.' : `Có vật cản phía trước — robot chờ ${App.site.sim.waitSec} giây rồi tìm đường vòng.`}</p>
+      <p class="sub">${r.why === 'person' ? 'Có người phía trước — robot chờ quý khách đi qua.' : isValetudo() ? `Có vật cản phía trước — robot sẽ thử đi tiếp sau ${retrySec()} giây.` : `Có vật cản phía trước — robot chờ ${App.site.sim.waitSec} giây rồi tìm đường vòng.`}</p>
       ${tiles(tile('clear', '🧹', 'Nhân viên: đã dọn lối đi', 'blue slim'))}` };
   if (r.halt === 'paused') return { bar: 'Tạm dừng', tone: 'warn', body: `${face('wait')}<h1>Robot tạm dừng</h1><p class="sub">Một trạm đã tạm dừng robot này.</p>
       ${tiles(tile('resume', '▶️', 'Chạy tiếp'))}` };

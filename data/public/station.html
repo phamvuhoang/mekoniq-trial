@@ -153,6 +153,7 @@
         <div style="display:flex;gap:6px;flex-wrap:wrap" id="simTools"><button class="btn sm" data-act="obClear">Gỡ hết vật cản</button><a class="btn sm" href="map.html" target="_blank">✏️ Thiết kế lộ trình ↗</a></div>
         <a class="btn sm" href="setup.html" target="_blank">⚙️ Cấu hình ↗</a></div>
       <svg id="map" class="floor" role="img" aria-label="Sơ đồ nhà hàng, lối đi và vị trí robot"></svg>
+      <canvas id="vmap" width="1000" height="700" hidden style="width:100%;height:auto;display:block;border-radius:12px;background:#f3f6f8"></canvas>
       <div id="legend"></div><p class="hint" id="modeHint"></p></div>
     <div class="two">
       <div class="card"><p class="eyebrow">Nhiệm vụ đang chạy & hàng chờ</p><div id="missions"></div></div>
@@ -173,7 +174,7 @@
 </dialog>
 <div id="offline" hidden>Mất kết nối tới hệ thống điều phối — đang kết nối lại…</div>
 
-<script src="transport.js"></script><script src="common.js"></script>
+<script src="transport.js"></script><script src="common.js"></script><script src="vmap.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -368,10 +369,35 @@ function buildMap() {
   });
   mapBuilt = true;
 }
+// Valetudo-only site: the robot's own map (vmap.js) instead of the hand-drawn floor plan; tapping a table picks it.
+let vm = null, vmapT = 0, vmapRobot = null;
+async function pollVmap() {
+  const r = App.site && App.site.robots.find(x => x.driver === 'valetudo');
+  if (!r) return;
+  try {
+    const res = await fetch('/api/map/' + encodeURIComponent(r.id), { cache: 'no-store' });
+    if (!res.ok) return;
+    const m = await res.json();
+    if (m.t !== vmapT) { vmapT = m.t; vmapRobot = r.id; vm.setMap(m); renderMap(); }
+  } catch (e) {}
+}
+function renderVmap() {
+  const S = App.site;
+  $('map').style.display = 'none'; $('vmap').hidden = false; $('mode').hidden = true; $('legend').hidden = true;
+  $('modeHint').textContent = 'Bản đồ do robot tự quét. Chạm bàn để chọn cho nhiệm vụ; điểm dừng chỉnh trong “Cấu hình”.';
+  if (!vm) { vm = VMap($('vmap'), { onTap: (x, y, id) => { if (id && S.points[id] && S.points[id].kind === 'table') choose('t', id); } }); pollVmap(); setInterval(pollVmap, 10000); }
+  const r = S.robots.find(x => x.driver === 'valetudo'), P = (r && r.valetudo.points) || {};
+  const sel = new Set(F.tab === 'deliver' ? F.tables : F.tab === 'bus' ? [F.table] : [F.to]);
+  const points = {};
+  for (const [id, p] of Object.entries(S.points)) if (P[id]) points[id] = { ...P[id], name: p.name, kind: p.kind, sel: sel.has(id) };
+  const robots = (App.state ? App.state.robots : []).filter(x => x.pos && S.robots.some(c => c.id === x.id && c.driver === 'valetudo'))
+    .map(x => ({ id: x.id, ...x.pos, tone: robotStatus(x)[1], ring: x.halt === 'blocked' || x.nav === 'wait' }));
+  vm.draw({ points, robots });
+}
 function renderMap() {
   if (!App.site) return;
   $('simTools').hidden = !hasSim();
-  if (!hasSim()) return;   // Valetudo-only site: no hand-drawn floor plan (robot map comes in Task 12)
+  if (!hasSim()) return renderVmap();
   if (!mapBuilt) buildMap();
   if (App.map && App.map.v !== netV) { netV = App.map.v; $('net').innerHTML = netSVG(App.map); }
   const sel = new Set(F.tab === 'deliver' ? F.tables : F.tab === 'bus' ? [F.table] : [F.to]);
