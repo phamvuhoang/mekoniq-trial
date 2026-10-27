@@ -1,6 +1,6 @@
 # Cấu hình trên màn hình, bản đồ Valetudo, tự xử lý khi bị chặn
 
-Ngày: 2026-10-28 · Trạng thái: **chờ duyệt** · Phạm vi: `trial/` (Node-RED trên Android/Termux + robot Valetudo)
+Ngày: 2026-10-28 · Trạng thái: **đã duyệt 2026-10-28** (câu trả lời ở §12) · Phạm vi: `trial/` (Node-RED trên Android/Termux + robot Valetudo)
 Nối tiếp: `2026-10-27-valetudo-mqtt-adapter-design.md`.
 
 ## 1. Ý định
@@ -73,15 +73,15 @@ Giữ nguyên schema hiện tại, thêm ít nhất có thể:
   "roles": [ { "id": "bep", "name": "Bếp", "home": "kitchen", "tab": "deliver" }, … ],
   "robots": [ { "id": "R1", "dock": "D1", "driver": "valetudo",
                 "valetudo": { "topic": "valetudo/Bot", "arriveCm": 40, "nomoveSec": 10, "tripSec": 180,
-                              "retrySec": 15, "retryMax": 4, "stuckSec": 20, "acceptCm": 80 } } ],
-  "points": { "T05": { "name": "Bàn 05", "kind": "table", "x": 11.5, "y": 8 }, … },   // x,y m: chỉ simulator / sàn vẽ tay
-  "valetudo": {
-    "points": { "T05": { "x": 1400, "y": 1680 }, … },                                 // cm, trên bản đồ robot
-    "mapRef": { "size": { "x": 2500, "y": 2000 }, "charger": { "x": 120, "y": 340 } } // chụp lúc lưu điểm → phát hiện vẽ lại bản đồ
-  },
-  "map": { "nodes": …, "edges": … }   // lộ trình sàn vẽ tay: chỉ simulator
+                              "retrySec": 15, "retryMax": 4, "stuckSec": 20, "acceptCm": 80,
+                              "points": { "T05": { "x": 1400, "y": 1680 }, "kitchen": {…} },   // cm, trên bản đồ CỦA ROBOT NÀY
+                              "mapRef": { "size": { "x": 2500, "y": 2000 }, "charger": { "x": 120, "y": 340 } } } } ],
+  "points": { "T05": { "name": "Bàn 05", "kind": "table" }, … },   // x,y m chỉ còn cho simulator / sàn vẽ tay (bản web demo)
+  "map": { "nodes": …, "edges": … }   // lộ trình sàn vẽ tay: chỉ simulator (bản web demo)
 }
 ```
+
+**Nhiều robot về sau**: mỗi robot Valetudo có **bản đồ riêng** (tự quét, gốc toạ độ khác nhau) → toạ độ điểm thuộc về robot, không thuộc site: `robots[].valetudo.points` thay cho `site.valetudo.points` cũ. Danh sách điểm (tên, loại) dùng chung; mỗi robot dạy riêng vị trí. `setup.html` có ô chọn robot; điểm hiện "đã định vị trên R1, chưa trên R2". Phân việc nhiều robot: orchestrator chọn robot gần nhất theo khoảng cách Euclid **cm** giữa `pos` của robot và điểm đầu trong `points` của chính robot đó (dự phòng khi không có `site.map`); robot chưa dạy điểm đó thì không nhận việc đó. Adapter đã theo từng robot (`st.robots[id]`), `/api/map/:robot` theo robot. Chưa làm: tránh nhau, xếp hàng vào bếp giữa robot thật — orchestrator đã xếp hàng theo điểm dừng.
 
 Quy tắc trong `lib/site.js`:
 - `id` điểm: `^[A-Za-z][A-Za-z0-9_-]{0,15}$`, duy nhất; `kind ∈ table|station|dish|dock`; đúng một `dish` = `dishPoint`; mỗi robot `dock` phải là `kind:dock`.
@@ -90,7 +90,8 @@ Quy tắc trong `lib/site.js`:
   - `orchestrator.gotoCmd`/`assign` dùng `site.points[id]` làm dự phòng (hiện `c.st.map.nodes[r.target]` sẽ `TypeError`); `sync()` chịu được dock thiếu `x,y`.
   - `route.clean()` và `route.unreachable()` **bỏ qua** điểm không có node (hiện `clean` trả `null` → `map.html` không lưu được nữa sau khi thêm 1 bàn); `simulator.init` bỏ robot có dock không có node.
   - Simulator nhận `goto` tới điểm không có node → `stuck/noroute` như hiện nay (đúng: robot giả không có đường).
-- `valetudo.points[id]`: số nguyên ≥ 0 ≤ `mapRef.size` nếu có.
+- **Hai bộ dữ liệu**: `data/site.json` = seed **trống** cho nhà hàng thật (vai trò bếp/bar/dọn/QL, timing, `kitchen` + `bar` + `dish` + `D1`, R1 Valetudo chưa có topic, 0 bàn, không `map`); `data/site.demo.json` = demo 12 bàn + R1–R3 simulator + sàn vẽ tay, dùng cho `scripts/export-web.sh`, `scripts/test.js`, `smoke-test.js`. Gói Termux (`pack.sh`) chỉ mang `site.json`.
+- `robots[].valetudo.points[id]`: số nguyên ≥ 0 ≤ `mapRef.size` nếu có; `acceptCm`, `retrySec`… là số, có giới hạn hợp lý (0–300 cm, 5–120 s).
 - Xoá điểm/robot đang nằm trong `missions` mở hoặc `robots[].mission` → lỗi "đang có lệnh".
 - Trường không biết → giữ nguyên (không mất dữ liệu khi UI cũ gặp site mới).
 
@@ -111,7 +112,7 @@ Một trang, 4 thẻ (tab):
 3. **Vai trò & thời gian**: roles (tên, điểm nhà, tab mặc định), `timing.*`, `trays`.
 4. **Sao lưu**: Tải xuống JSON · Nhập JSON · Khôi phục mặc định (2 chạm) · hiện "đang chạy từ: mặc định / đã chỉnh lúc …".
 
-Nút **Lưu** chung, sticky, disabled khi chưa đổi; lưu thất bại hiện lý do cạnh dòng lỗi. Trang dùng `common.js`/`transport.js` như các trang khác; `index.html` thêm ô "Cấu hình". Link "✏️ Thiết kế lộ trình" (`map.html`) chỉ hiện khi có robot simulator.
+Nút **Lưu** chung, sticky, disabled khi chưa đổi; lưu thất bại hiện lý do cạnh dòng lỗi. Trang dùng `common.js`/`transport.js` như các trang khác; `index.html` thêm ô "Cấu hình". Link "✏️ Thiết kế lộ trình" (`map.html`) và chế độ đặt vật cản chỉ hiện khi site có robot simulator (bản web demo). Không cần PIN: ai có link cũng vào được (quyết định của anh, §12).
 
 ## 7. Màn trạm & màn robot
 
@@ -137,10 +138,12 @@ Robot thật khi bị chắn có thể báo theo **một trong ba kiểu** (chư
 | Lỗi Valetudo (`error_description`, status `error`) | `blocked` ngay (như cũ: kẹt bánh, nhấc lên… cần người). **Lỗi hết → tự gửi lại lệnh** (hiện nay chỉ hết cảnh báo, không chạy tiếp). |
 | Nhân viên "Đã dọn lối đi" (`sim/clear`) | gửi lại ngay, `tries = 0` (như cũ). |
 | `paused` / e-stop | không thử lại; `resume` mới chạy. |
-| Dừng cách đích ≤ `acceptCm` sau khi `tries ≥ retryMax` | coi là **đã tới** (ghế kéo ra chắn đúng chỗ dừng; robot cách bàn < 1 m vẫn phục vụ được), log "dừng gần". `acceptCm: 0` tắt. **Quyết định của tôi — cần duyệt**, xem §12. |
+| Dừng cách đích ≤ `acceptCm` sau khi `tries ≥ retryMax` | coi là **đã tới** (ghế kéo ra chắn đúng chỗ dừng), log "R1 dừng cách Bàn 05 ~60 cm". `acceptCm` chỉnh được trong thẻ Robot của `setup.html`; `0` tắt. Đã duyệt. |
 | `tripSec` | giữ làm lưới cuối (mặc định 180 s), ít khi còn tới. |
 
 Telemetry giữ hợp đồng cũ; chỉ dùng thêm `nav:'wait'` mà orchestrator đã hiểu (simulator đang dùng). **Không sửa orchestrator cho phần này.**
+
+**Ghi nhận hành vi robot thật**: vì chưa biết robot báo kiểu (A)/(B)/(C) khi bị chắn, adapter ghi vào log orchestrator (`level:'info'`) mỗi khi một chuyến kết thúc bất thường: `R1: chuyến tới Bàn 05 dừng ở 1234,567 (cách 180 cm), status=idle, lỗi=…`. Buổi thử sau đọc log này để chỉnh `stuckSec`/`retryErr`. Log hiện lên trong "Nhật ký" của trạm; không cần công cụ thêm.
 
 `scripts/fake-valetudo.js` thêm kịch bản: `go/set` tới toạ độ có `x` lẻ → "bị chặn" (moving 2 s rồi idle giữa đường); gửi lại lần 2 → tới. Dùng cho smoke test tay.
 
@@ -210,7 +213,14 @@ Kiểm chứng cuối: `npm test` xanh; `mosquitto -p 1884 & node scripts/fake-v
 - Bản đồ gửi UI qua HTTP poll 10 s thay vì WS push (đơn giản, bản đồ ít đổi).
 - Không khoá `setup.html` bằng mật khẩu (LAN nội bộ, như các trang khác). Cần thì thêm PIN ở bước sau.
 
-**Cần anh trả lời** (đổi câu trả lời là đổi việc làm)
+**Đã trả lời 2026-10-28**
+1. Chưa ghi lại được hành vi robot khi bị chắn ở buổi demo → §8 che cả ba kiểu và ghi log để buổi sau biết.
+2. Seed trống cho gói thật; demo 12 bàn chỉ cho bản web. → `site.json` / `site.demo.json`.
+3. `acceptCm` 80 cm chấp nhận, phải chỉnh được trên UI.
+4. Simulator R2/R3 và sàn vẽ tay không cần cho triển khai thật (1 robot, mặt sàn khác hẳn), **nhưng thiết kế phải chạy tốt khi có nhiều robot** → điểm theo từng robot (§5), phân việc theo cm.
+5. Trang cấu hình: ai có link cũng vào được.
+
+**Câu hỏi gốc (để đối chiếu)**
 1. **Robot thật báo gì khi bị người/ghế chắn?** Buổi 27/10 có thấy status `idle` giữa đường, hay vẫn `moving` đứng yên, hay `error` + dòng lỗi gì (chụp Valetudo → Robot → error)? Model robot là gì? §8 đã che cả ba kiểu, nhưng ngưỡng mặc định (`stuckSec`, mẫu `retryErr`) chỉ chỉnh đúng khi biết kiểu thật.
 2. **Dữ liệu mặc định là gì?** `site.json` hiện là demo 12 bàn + 3 sạc. "Khôi phục mặc định" ở nhà hàng thật sẽ đổ lại 12 bàn demo. Đề xuất của tôi: gói cài cho đối tác dùng seed **gần trống** (vai trò, thời gian, 1 robot R1 Valetudo, bếp + rửa chén + 1 dock, 0 bàn); demo 12 bàn + simulator giữ cho bản web/demo bán hàng (`scripts/export-web.sh`). Đồng ý?
 3. `acceptCm` 80 cm: chấp nhận robot "đã tới" khi dừng cách bàn < 80 cm vì chỗ dừng bị chắn, hay bắt buộc đúng điểm (0)?
