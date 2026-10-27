@@ -52,15 +52,27 @@ function calib(site, r) {
   return { T: fit(pairs), points };
 }
 
-// Robot position {x, y, angle} (cm) from a MapData/map-data payload, or null if it is not one we can read.
-function parseMap(payload) {
-  try {
-    const m = JSON.parse(zlib.inflateSync(Buffer.from(payload)));
-    const e = m.entities.find(e => e.type === 'robot_position');
-    const [x, y] = e.points;
-    return Number.isFinite(x) && Number.isFinite(y) ? { x, y, angle: (e.metaData && e.metaData.angle) ?? null } : null;
-  } catch (e) { return null; }
+// A MapData/map-data payload (zlib-deflated Valetudo map): robot position {x, y, angle} (cm) and a compact copy of
+// the map for the UI — {size, pixelSize, layers:[{type, segmentId?, name?, px}], charger}. px = Valetudo's
+// compressedPixels ([xStart, y, count] triples, in pixels). Either part is null when it cannot be read.
+function parseMapData(payload) {
+  let m;
+  try { m = JSON.parse(zlib.inflateSync(Buffer.from(payload))); } catch (e) { return { pos: null, map: null }; }
+  const ents = Array.isArray(m.entities) ? m.entities : [];
+  const pt = (type) => { const e = ents.find(e => e && e.type === type); const [x, y] = (e && e.points) || []; return Number.isFinite(x) && Number.isFinite(y) ? { x, y, e } : null; };
+  const rp = pt('robot_position'), ch = pt('charger_location');
+  const pos = rp ? { x: rp.x, y: rp.y, angle: (rp.e.metaData && rp.e.metaData.angle) ?? null } : null;
+  let map = null;
+  if (m.size && Number.isFinite(m.size.x) && Number.isFinite(m.size.y) && Number.isFinite(m.pixelSize)) {
+    const layers = (Array.isArray(m.layers) ? m.layers : []).filter(l => l && Array.isArray(l.compressedPixels)).map(l => {
+      const md = l.metaData || {};
+      return { type: l.type, ...(md.segmentId !== undefined && { segmentId: String(md.segmentId) }), ...(md.name && { name: String(md.name) }), px: l.compressedPixels };
+    });
+    map = { size: { x: m.size.x, y: m.size.y }, pixelSize: m.pixelSize, layers, charger: ch ? { x: ch.x, y: ch.y } : null };
+  }
+  return { pos, map };
 }
+const parseMap = payload => parseMapData(payload).pos;
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
 const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000;
@@ -125,11 +137,12 @@ function start(id, b, now, events, mqtt) {
   else mqtt.push(send(b, now));
 }
 
-// input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload} | {cmd:'link', up}. Returns {events, mqtt}.
+// input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload} | {cmd:'link', up}.
+// Returns {events, mqtt, maps}; maps[robotId] = compact map when one arrived in this call (kept out of st: it is big).
 function handle(st, site, input, now) {
   if (st.key !== robotsKey(site)) { const fresh = init(site, st); for (const k of Object.keys(st)) delete st[k]; Object.assign(st, fresh); }   // config edited
   if (st.boot !== BOOT) { st.boot = BOOT; for (const r of Object.values(st.robots)) r.online = false; }
-  const events = [], mqtt = [], id = input.robot, b = st.robots[id];
+  const events = [], mqtt = [], maps = {}, id = input.robot, b = st.robots[id];
   switch (input.cmd) {
     case 'goto': {
       if (!b) break;
@@ -158,7 +171,7 @@ function handle(st, site, input, now) {
         Object.assign(r, { goal: null, pending: false, checkUntil: 0, paused: false, blocked: false, why: null });
       }
       break;
-    case 'mqtt': ingest(st, input, now, events, mqtt); break;
+    case 'mqtt': ingest(st, input, now, events, mqtt, maps); break;
     case 'link': if (!input.up) for (const r of Object.values(st.robots)) r.online = false; break;   // broker connection lost
     case 'tick':
       for (const [rid, r] of Object.entries(st.robots)) {
@@ -172,10 +185,10 @@ function handle(st, site, input, now) {
       break;
     // map / obstacle: the robot uses its own map and sensors.
   }
-  return { events, mqtt };
+  return { events, mqtt, maps };
 }
 
-function ingest(st, input, now, events, mqtt) {
+function ingest(st, input, now, events, mqtt, maps) {
   for (const [id, b] of Object.entries(st.robots)) {
     if (!input.topic.startsWith(b.topic + '/')) continue;
     const key = input.topic.slice(b.topic.length + 1), v = String(input.payload);
@@ -183,7 +196,9 @@ function ingest(st, input, now, events, mqtt) {
     else if (key === 'StatusStateAttribute/error_description') b.err = v && v !== 'No error' ? v : null;
     else if (key === 'BatteryStateAttribute/level') { if (v.trim() !== '' && Number.isFinite(Number(v))) b.battery = Number(v); }   // '' = retained cleared
     else if (key === 'MapData/map-data') {
-      b.pos = parseMap(input.payload) || b.pos;
+      const { pos, map } = parseMapData(input.payload);
+      b.pos = pos || b.pos;
+      if (map) { maps[id] = { ...map, t: now }; b.mapMeta = { size: map.size, charger: map.charger }; }
       if (b.checkUntil && b.goal && !b.blocked) check(id, b, now, events);
     }
     else if (key === 'StatusStateAttribute/status') {
@@ -206,9 +221,9 @@ function telemetry(st, site) {
     const p = b.pos && b.T ? toSite(b.T, b.pos) : { x: d.x || 0, y: d.y || 0 };
     const blocked = b.blocked || !!b.err, moving = !!b.goal && !b.paused && !blocked;
     robots.push({ id, x: p.x, y: p.y, battery: b.battery, moving, blocked, nav: moving ? 'moving' : 'idle',
-      why: b.err ? 'object' : b.why, path: [], rem: 0 });
+      why: b.err ? 'object' : b.why, path: [], rem: 0, pos: b.pos ? { x: b.pos.x, y: b.pos.y, angle: b.pos.angle ?? null } : null });
   }
   return { event: 'telemetry', robots };
 }
 
-module.exports = { fit, toSite, calib, init, handle, arriveCm, parseMap };
+module.exports = { fit, toSite, calib, init, handle, arriveCm, parseMap, parseMapData };
