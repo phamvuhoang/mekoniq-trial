@@ -36,10 +36,108 @@ const SITE = {
   t = H({ cmd: 'tick' }).events[0].robots[0];
   assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'noroute');
   now += 2000;
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'idle' });   // left the dock
   assert.strictEqual(H({ cmd: 'goto', robot: 'R1', to: 'D1', x: 7.5, y: 1.2, token: 3 }).mqtt[0].payload, 'HOME');
   assert.strictEqual(H({ cmd: 'tick' }).events[0].robots[0].blocked, false);
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'lost' });
   assert.deepStrictEqual(H({ cmd: 'tick' }).events[0].robots, []);
   assert.deepStrictEqual(H({ cmd: 'map', map: {}, v: 2 }), { events: [], mqtt: [] });       // ignored
   console.log('✓ ingest / telemetry / publishes');
+}
+
+// Trip end / blocked / redirect. Position is set on the state directly (map-data parsing is tested below).
+{
+  const GO = 'valetudo/Bot/GoToLocationCapability/go/set', OP = 'valetudo/Bot/BasicControlCapability/operation/set';
+  const KITCHEN = '{"coordinates":{"x":2150,"y":2700}}', T01 = '{"coordinates":{"x":1450,"y":1850}}';
+  let st, now;
+  const H = (i) => V.handle(st, SITE, i, now);
+  const status = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: s });
+  const goto = (to, token) => H({ cmd: 'goto', robot: 'R1', to, x: 0, y: 0, token });
+  const tel = () => H({ cmd: 'tick' }).events[0].robots[0];
+  const pos = (x, y) => { st.robots.R1.pos = { x, y }; };
+  const fresh = () => {
+    st = V.init(SITE); now = 1e12;
+    H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
+    status('docked');
+    H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '90' });
+  };
+
+  // a) normal trip: idle after moving, near target -> arrived with token
+  fresh();
+  assert.deepStrictEqual(goto('kitchen', 1).mqtt, [{ topic: GO, payload: KITCHEN }]);
+  assert.deepStrictEqual(status('moving').events, []);
+  now += 3000; pos(2160, 2690);
+  assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 1 }]);
+  assert.strictEqual(st.robots.R1.goal, null);
+  let t = tel(); assert.strictEqual(t.moving, false); assert.strictEqual(t.blocked, false);
+  // position shown in site metres
+  assert.deepStrictEqual([t.x, t.y], [3.1, 11.6]);
+
+  // b) stale idle within 1.5 s is ignored
+  goto('T01', 2); now += 500;
+  assert.deepStrictEqual(status('idle'), { events: [], mqtt: [] });
+  assert.strictEqual(tel().nav, 'moving');
+
+  // c) stops far away -> blocked 'object'; resume resends go/set; later arrives
+  now += 3000; pos(3000, 3000);
+  assert.deepStrictEqual(status('idle').events, []);
+  t = tel(); assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'object');
+  assert.deepStrictEqual(H({ cmd: 'resume', robot: 'R1' }).mqtt, [{ topic: GO, payload: T01 }]);
+  assert.strictEqual(tel().blocked, false);
+  status('moving'); now += 3000; pos(1455, 1850);
+  assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 2 }]);
+  assert.strictEqual(tel().blocked, false);
+
+  // d) error_description != 'No error' -> blocked 'object'; back to 'No error' -> cleared
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/error_description', payload: 'Wheel stuck' });
+  t = tel(); assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'object');
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/error_description', payload: 'No error' });
+  assert.strictEqual(tel().blocked, false);
+
+  // e) HOME: returning -> docked = arrived, no position check
+  assert.deepStrictEqual(goto('D1', 3).mqtt, [{ topic: OP, payload: 'HOME' }]);
+  status('returning'); now += 3000;
+  assert.deepStrictEqual(status('docked').events, [{ event: 'arrived', robot: 'R1', token: 3 }]);
+  // already docked -> arrived at once, nothing published
+  assert.deepStrictEqual(goto('D1', 30), { events: [{ event: 'arrived', robot: 'R1', token: 30 }], mqtt: [] });
+
+  // f) already standing at the target -> arrived immediately, no publish
+  fresh(); pos(2150, 2700); status('idle');
+  assert.deepStrictEqual(goto('kitchen', 4), { events: [{ event: 'arrived', robot: 'R1', token: 4 }], mqtt: [] });
+
+  // g) redirect while moving: STOP, then the new goal once idle; no 'arrived' from that idle
+  fresh(); goto('T01', 5); now += 2000; status('moving');
+  assert.deepStrictEqual(goto('kitchen', 6).mqtt, [{ topic: OP, payload: 'STOP' }]);
+  now += 1000;
+  assert.deepStrictEqual(status('idle'), { events: [], mqtt: [{ topic: GO, payload: KITCHEN }] });
+  status('moving'); now += 3000;
+  assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 6 }]);   // no pos -> trust status
+
+  // h) redirect timeout: no idle within 3 s -> send anyway on tick
+  fresh(); goto('T01', 5); now += 2000; status('moving');
+  goto('kitchen', 6); now += 1000;
+  assert.deepStrictEqual(H({ cmd: 'tick' }).mqtt, []);
+  now += 2000;
+  assert.deepStrictEqual(H({ cmd: 'tick' }).mqtt, [{ topic: GO, payload: KITCHEN }]);
+
+  // i) second goto while waiting replaces the goal, no extra STOP
+  fresh(); goto('kitchen', 5); now += 2000; status('moving');
+  goto('kitchen', 6);
+  assert.deepStrictEqual(goto('T01', 7).mqtt, []);
+  assert.deepStrictEqual(status('idle').mqtt, [{ topic: GO, payload: T01 }]);
+  // pause while waiting: nothing is sent on idle, resume sends the latest goal
+  fresh(); goto('kitchen', 5); now += 2000; status('moving'); goto('T01', 6);
+  assert.deepStrictEqual(H({ cmd: 'stop', robot: 'R1' }).mqtt, [{ topic: OP, payload: 'STOP' }]);
+  assert.deepStrictEqual(status('idle'), { events: [], mqtt: [] });
+  now += 5000; assert.deepStrictEqual(H({ cmd: 'tick' }).mqtt, []);
+  assert.deepStrictEqual(H({ cmd: 'resume', robot: 'R1' }).mqtt, [{ topic: GO, payload: T01 }]);
+
+  // j) no position at all: moving -> idle after 3 s -> arrived (trust status)
+  fresh(); goto('T01', 8); status('moving'); now += 3000;
+  assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 8 }]);
+  // status 'error' mid-trip -> blocked, never 'arrived'
+  goto('kitchen', 9); now += 3000;
+  assert.deepStrictEqual(status('error').events, []);
+  assert.strictEqual(tel().why, 'object');
+  console.log('✓ trip end / blocked / redirect');
 }
