@@ -1,0 +1,97 @@
+// Valetudo map on a <canvas>: floor / walls / rooms from the compact map served at /api/map/:robot, plus the
+// site's taught points (robot cm) and the robots themselves. Shared by station.html (view) and setup.html (place points).
+//   const vm = VMap(canvas, { onTap(x, y, hitId) });   // x,y in robot cm; hitId = point under the finger or null
+//   vm.setMap(map); vm.setZoom(1|2, centre?); vm.draw({ points, robots, charger });
+//   vm.toMap(clientX, clientY) -> {x, y};  vm.hit(clientX, clientY) -> id | null
+// Coordinates: Valetudo cm, origin top-left, y down — the same frame as GoToLocationCapability.
+function VMap(canvas, opts = {}) {
+  const ctx = canvas.getContext('2d');
+  const COL = { floor: '#dfe7ec', wall: '#2d3748', bg: '#f3f6f8', text: '#0f2f26',
+    seg: ['#cfe8ff', '#d9f3dc', '#fde8c8', '#ead9ff', '#ffd9e1', '#dff5f3'],
+    tone: { ok: '#b9fb75', go: '#8fc7ff', warn: '#ffc46b', danger: '#ff6b6b' } };
+  let map = null, img = null, segLabels = [], zoom = 1, centre = null, last = null;
+  let tf = { s: 1, ox: 0, oy: 0 };   // cm -> canvas px: px = cm * s + ox
+  const toPx = (x, y) => [x * tf.s + tf.ox, y * tf.s + tf.oy];
+
+  // Rasterize layers once per map at 1 canvas px per map pixel (5 cm): cheap to redraw, cheap to scale.
+  function setMap(m) {
+    map = m; segLabels = [];
+    const W = Math.ceil(m.size.x / m.pixelSize), H = Math.ceil(m.size.y / m.pixelSize);
+    img = document.createElement('canvas'); img.width = W; img.height = H;
+    const c = img.getContext('2d');
+    const order = ['floor', 'segment', 'wall'];
+    let si = 0;
+    for (const type of order) for (const l of m.layers) {
+      if (l.type !== type) continue;
+      c.fillStyle = type === 'segment' ? COL.seg[si++ % COL.seg.length] : COL[type];
+      let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity;
+      for (let i = 0; i + 2 < l.px.length; i += 3) {
+        const x = l.px[i], y = l.px[i + 1], n = l.px[i + 2];
+        c.fillRect(x, y, n, 1);
+        if (x < minx) minx = x; if (x + n - 1 > maxx) maxx = x + n - 1; if (y < miny) miny = y; if (y > maxy) maxy = y;
+      }
+      if (type === 'segment' && l.name && maxx >= minx) segLabels.push({ name: l.name, x: (minx + maxx) / 2 * m.pixelSize, y: (miny + maxy) / 2 * m.pixelSize });
+    }
+    fit();
+  }
+  function fit() {
+    if (!map) return;
+    const base = Math.min(canvas.width / map.size.x, canvas.height / map.size.y);
+    const s = base * zoom;
+    let ox = (canvas.width - map.size.x * s) / 2, oy = (canvas.height - map.size.y * s) / 2;
+    if (zoom > 1 && centre) {   // keep the centre of interest in the middle, within the map
+      ox = canvas.width / 2 - centre.x * s; oy = canvas.height / 2 - centre.y * s;
+      ox = Math.min(0, Math.max(canvas.width - map.size.x * s, ox)); oy = Math.min(0, Math.max(canvas.height - map.size.y * s, oy));
+    }
+    tf = { s, ox, oy };
+  }
+  function setZoom(z, at) { zoom = z || 1; centre = at || centre; fit(); }
+
+  function draw(d) {
+    last = d;
+    ctx.fillStyle = COL.bg; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!map) { ctx.fillStyle = '#6b7c78'; ctx.font = '16px system-ui'; ctx.textAlign = 'center'; ctx.fillText('Chưa có bản đồ từ robot', canvas.width / 2, canvas.height / 2); return; }
+    ctx.imageSmoothingEnabled = false;
+    const sPx = tf.s * map.pixelSize;
+    ctx.drawImage(img, tf.ox, tf.oy, img.width * sPx, img.height * sPx);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#4a5f5a'; ctx.font = '600 13px system-ui';
+    for (const l of segLabels) { const [x, y] = toPx(l.x, l.y); ctx.fillText(l.name, x, y); }
+    const ch = d.charger || map.charger;
+    if (ch) { const [x, y] = toPx(ch.x, ch.y); ctx.font = '18px system-ui'; ctx.fillText('⚡', x, y); }
+    for (const [id, p] of Object.entries(d.points || {})) {
+      const [x, y] = toPx(p.x, p.y), label = p.kind === 'table' ? (p.name || id).replace('Bàn ', '') : (p.name || id);
+      ctx.font = (p.kind === 'table' ? '800 13px' : '700 12px') + ' system-ui';
+      const w = Math.max(28, ctx.measureText(label).width + 14), h = 22;
+      ctx.fillStyle = p.kind === 'table' ? '#ffffff' : '#0f2f26';
+      ctx.strokeStyle = p.sel ? '#1e6fd0' : '#0f2f26'; ctx.lineWidth = p.sel ? 4 : 1.5;
+      ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, p.kind === 'table' ? 11 : 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = p.kind === 'table' ? COL.text : '#ffffff'; ctx.fillText(label, x, y + 1);
+      ctx.fillStyle = p.sel ? '#1e6fd0' : COL.text; ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill();   // the exact stop
+    }
+    for (const r of d.robots || []) {
+      const [x, y] = toPx(r.x, r.y);
+      if (r.ring) { ctx.strokeStyle = '#d32f2f'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.arc(x, y, 14, 0, 7); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.fillStyle = COL.tone[r.tone] || COL.tone.ok; ctx.strokeStyle = COL.text; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, 9, 0, 7); ctx.fill(); ctx.stroke();
+      if (Number.isFinite(r.angle)) { const a = r.angle * Math.PI / 180; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 16 * Math.cos(a), y + 16 * Math.sin(a)); ctx.lineWidth = 3; ctx.stroke(); }
+      ctx.fillStyle = COL.text; ctx.font = '800 11px system-ui'; ctx.fillText(r.id, x, y - 15);
+    }
+  }
+
+  function toMap(clientX, clientY) {
+    const b = canvas.getBoundingClientRect(), kx = canvas.width / b.width, ky = canvas.height / b.height;
+    const px = (clientX - b.left) * kx, py = (clientY - b.top) * ky;
+    return { x: Math.round((px - tf.ox) / tf.s), y: Math.round((py - tf.oy) / tf.s) };
+  }
+  function hit(clientX, clientY) {
+    if (!last) return null;
+    const b = canvas.getBoundingClientRect(), kx = canvas.width / b.width;
+    const px = (clientX - b.left) * kx, py = (clientY - b.top) * (canvas.height / b.height);
+    let best = null, bd = 25;
+    for (const [id, p] of Object.entries(last.points || {})) { const [x, y] = toPx(p.x, p.y), d = Math.hypot(x - px, y - py); if (d < bd) { bd = d; best = id; } }
+    return best;
+  }
+  canvas.addEventListener('click', e => { if (opts.onTap) { const { x, y } = toMap(e.clientX, e.clientY); opts.onTap(x, y, hit(e.clientX, e.clientY)); } });
+  return { setMap, setZoom, draw, toMap, hit, get map() { return map; } };
+}
