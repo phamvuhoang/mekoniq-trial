@@ -10,6 +10,7 @@
     { "id": "R2", "dock": "D2" },
     { "id": "R3", "dock": "D3" }
   ],
+  "valetudo": { "points": {} },
   "roles": [
     { "id": "bep", "name": "Bếp", "home": "kitchen", "tab": "deliver" },
     { "id": "bar", "name": "Quầy pha chế", "home": "bar", "tab": "deliver" },

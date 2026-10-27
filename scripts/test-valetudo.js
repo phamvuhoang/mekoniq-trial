@@ -121,8 +121,8 @@ const SITE = {
   assert.deepStrictEqual(H({ cmd: 'tick' }).mqtt, [{ topic: GO, payload: KITCHEN }]);
 
   // i) second goto while waiting replaces the goal, no extra STOP
-  fresh(); goto('kitchen', 5); now += 2000; status('moving');
-  goto('kitchen', 6);
+  fresh(); goto('T01', 5); now += 2000; status('moving');
+  assert.deepStrictEqual(goto('kitchen', 6).mqtt, [{ topic: OP, payload: 'STOP' }]);
   assert.deepStrictEqual(goto('T01', 7).mqtt, []);
   assert.deepStrictEqual(status('idle').mqtt, [{ topic: GO, payload: T01 }]);
   // pause while waiting: nothing is sent on idle, resume sends the latest goal
@@ -131,6 +131,12 @@ const SITE = {
   assert.deepStrictEqual(status('idle'), { events: [], mqtt: [] });
   now += 5000; assert.deepStrictEqual(H({ cmd: 'tick' }).mqtt, []);
   assert.deepStrictEqual(H({ cmd: 'resume', robot: 'R1' }).mqtt, [{ topic: GO, payload: T01 }]);
+
+  // same destination resent (orchestrator re-syncs goals after a map change) -> keep driving, new token
+  fresh(); goto('T01', 10); now += 2000; status('moving');
+  assert.deepStrictEqual(goto('T01', 11), { events: [], mqtt: [] });
+  now += 3000; pos(1450, 1850);
+  assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 11 }]);
 
   // j) no position at all: moving -> idle after 3 s -> arrived (trust status)
   fresh(); goto('T01', 8); status('moving'); now += 3000;

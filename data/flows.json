@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "MEKONIQ Serve S1",
     "disabled": false,
-    "info": "Kitchen/Station tablets -> Mission Orchestrator -> Robot Adapter (simulator) -> telemetry.\nUI: / (station.html, robot.html, table.html). WS: /ws.\nSite map, robots, timings: data/site.json."
+    "info": "Kitchen/Station tablets -> Mission Orchestrator -> Route cmd by driver -> Robot Adapter (simulator | Valetudo over MQTT) -> telemetry.\nUI: / (station.html, robot.html, table.html). WS: /ws.\nSite map, robots, timings: data/site.json."
   },
   {
     "id": "ws_listener",
@@ -55,7 +55,7 @@
         "ws_out"
       ],
       [
-        "sim"
+        "route"
       ]
     ]
   },
@@ -99,7 +99,8 @@
     "y": 280,
     "wires": [
       [
-        "sim"
+        "sim",
+        "val"
       ]
     ]
   },
@@ -122,5 +123,109 @@
         "orch"
       ]
     ]
+  },
+  {
+    "id": "mqtt_broker",
+    "type": "mqtt-broker",
+    "name": "Mosquitto (Valetudo)",
+    "broker": "127.0.0.1",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "closeTopic": "",
+    "willTopic": "",
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "route",
+    "type": "function",
+    "z": "tab",
+    "name": "Route cmd by driver",
+    "func": "// robots[].driver === 'valetudo' -> Valetudo adapter, else simulator. Cmds without a robot (map, reset, obstacle) go to both.\nconst { site } = global.get('mekoniq');\nif (!msg.payload.robot) return [msg, msg];\nconst d = site.robots.find(r => r.id === msg.payload.robot);\nreturn d && d.driver === 'valetudo' ? [null, msg] : [msg, null];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 640,
+    "y": 220,
+    "wires": [
+      [
+        "sim"
+      ],
+      [
+        "val"
+      ]
+    ]
+  },
+  {
+    "id": "val",
+    "type": "function",
+    "z": "tab",
+    "name": "Robot Adapter (Valetudo)",
+    "func": "// ADAPTER: Valetudo robot over MQTT — logic in lib/valetudo.js (unit-tested by scripts/test-valetudo.js).\nconst { valetudo: V, site } = global.get('mekoniq');\nconst st = flow.get('val') || V.init(site);\nconst input = msg.topic === 'tick' ? { cmd: 'tick' }\n    : Buffer.isBuffer(msg.payload) || typeof msg.payload === 'string' ? { cmd: 'mqtt', topic: msg.topic, payload: msg.payload }\n    : msg.payload;\nconst r = V.handle(st, site, input, Date.now());\nflow.set('val', st);\nreturn [r.events.map(e => ({ topic: 'adapter', payload: e })), r.mqtt.map(m => ({ topic: m.topic, payload: m.payload }))];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 360,
+    "wires": [
+      [
+        "orch"
+      ],
+      [
+        "mqtt_out"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_in",
+    "type": "mqtt in",
+    "z": "tab",
+    "name": "Valetudo -> adapter",
+    "topic": "#",
+    "qos": "0",
+    "datatype": "buffer",
+    "broker": "mqtt_broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 360,
+    "wires": [
+      [
+        "val"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out",
+    "type": "mqtt out",
+    "z": "tab",
+    "name": "adapter -> Valetudo",
+    "topic": "",
+    "qos": "0",
+    "retain": "false",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "mqtt_broker",
+    "x": 690,
+    "y": 360,
+    "wires": []
   }
 ]

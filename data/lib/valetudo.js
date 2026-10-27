@@ -81,6 +81,8 @@ function handle(st, site, input, now) {
   switch (input.cmd) {
     case 'goto': {
       if (!b) break;
+      // same destination resent (orchestrator re-syncs goals after a map change): keep driving, no STOP
+      if (b.goal && b.goal.to === input.to && !b.paused && !b.blocked) { b.goal.token = input.token; break; }
       const { points } = calib(site);
       b.goal = { to: input.to, token: input.token, home: input.to === b.dock, coords: points[input.to] || null };
       b.paused = false; b.blocked = false; b.why = null;
