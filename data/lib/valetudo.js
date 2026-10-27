@@ -7,14 +7,25 @@ const zlib = require('zlib');
 //   subscribe <topic>/StatusStateAttribute/status|error_description, BatteryStateAttribute/level, $state,
 //             MapData/map-data (zlib-deflated JSON, robot_position entity)
 // The robot plans its own path on its own map; goals are site.valetudo.points[id] in robot cm.
-// Robot cm -> site m (for the UI only) is a similarity transform fitted on the points known in both.
-// Trip end = status leaves moving/returning: near the goal (or no position known) -> arrived, else blocked.
+// Robot cm -> site m (for the UI only) is a similarity transform (mirrored if that fits better, >= 3 points)
+// fitted on the points known in both.
+// Trip end = a stopped status after 'moving' was seen: near the goal (or no position known) -> arrived, else blocked.
+// Never seen moving 10 s after the command (rejected, or a trip inside the 1.5 s stale window) -> judged by position.
+// Blocked stays blocked until resume / "Đã dọn lối đi"; any trip still running after 3 min -> blocked.
 // New goal while moving -> STOP, wait for a stopped status (max 3 s), then send: not every model accepts go/set mid-trip.
-// ponytail: no path/rem/reroute/obstacles (Valetudo does not report them); one goal at a time;
-// a trip shorter than the 1.5 s stale-status window is never seen to end.
+// ponytail: no path/rem/reroute/obstacles (Valetudo does not report them); one goal at a time; TRIP_MS is fixed.
 
-// Least-squares 2-D similarity robot(cm) -> site(m): X = a*x - b*y + tx, Y = b*x + a*y + ty. null if < 2 pairs.
+// Least-squares 2-D similarity robot(cm) -> site(m): X = a*x - b*y + tx, Y = b*x + a*y + ty (y negated first when
+// T.m, i.e. the Valetudo map is mirrored). Two points cannot tell a mirror apart, so it is only tried from 3. null if < 2.
 function fit(pairs) {
+  const T = fit1(pairs);
+  if (!T || pairs.length < 3) return T;
+  const M = fit1(pairs.map(p => ({ site: p.site, robot: { x: p.robot.x, y: -p.robot.y } })));
+  M.m = true;
+  const err = (T) => pairs.reduce((s, p) => { const q = toSite(T, p.robot); return s + (q.x - p.site.x) ** 2 + (q.y - p.site.y) ** 2; }, 0);
+  return err(M) < err(T) ? M : T;
+}
+function fit1(pairs) {
   if (pairs.length < 2) return null;
   const n = pairs.length, avg = (f) => pairs.reduce((s, p) => s + f(p), 0) / n;
   const mx = avg(p => p.robot.x), my = avg(p => p.robot.y), MX = avg(p => p.site.x), MY = avg(p => p.site.y);
@@ -25,16 +36,23 @@ function fit(pairs) {
   }
   if (!ss) return null;
   const a = sa / ss, b = sb / ss;
-  return { a, b, tx: MX - a * mx + b * my, ty: MY - b * mx - a * my };
+  return { a, b, tx: MX - a * mx + b * my, ty: MY - b * mx - a * my, m: false };
 }
 
 const r2 = v => Math.round(v * 100) / 100 || 0;
-const toSite = (T, p) => ({ x: r2(T.a * p.x - T.b * p.y + T.tx), y: r2(T.b * p.x + T.a * p.y + T.ty) });
+function toSite(T, p) {
+  const y = T.m ? -p.y : p.y;
+  return { x: r2(T.a * p.x - T.b * y + T.tx), y: r2(T.b * p.x + T.a * y + T.ty) };
+}
 
+const calibs = new WeakMap();   // site.json is loaded once per process
 function calib(site) {
+  if (calibs.has(site)) return calibs.get(site);
   const points = (site.valetudo && site.valetudo.points) || {};
   const pairs = Object.keys(points).filter(id => site.points[id]).map(id => ({ site: site.points[id], robot: points[id] }));
-  return { T: fit(pairs), points };
+  const c = { T: fit(pairs), points };
+  calibs.set(site, c);
+  return c;
 }
 
 // Robot position {x, y, angle} (cm) from a MapData/map-data payload, or null if it is not one we can read.
@@ -42,31 +60,37 @@ function parseMap(payload) {
   try {
     const m = JSON.parse(zlib.inflateSync(Buffer.from(payload)));
     const e = m.entities.find(e => e.type === 'robot_position');
-    return { x: e.points[0], y: e.points[1], angle: (e.metaData && e.metaData.angle) ?? null };
+    const [x, y] = e.points;
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y, angle: (e.metaData && e.metaData.angle) ?? null } : null;
   } catch (e) { return null; }
 }
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
-const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000;
+const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000, NOMOVE_MS = 10000, TRIP_MS = 180000;
 const arriveCm = (site, r) => (r.valetudo && r.valetudo.arriveCm) ?? 40;
 
 // Saved state outlives the process (flow context on disk): after a restart nothing is "online" until the
 // broker (re)delivers $state, so a robot that went away meanwhile shows up as offline.
 const BOOT = Date.now() + Math.random();
-const robotsKey = site => site.robots.filter(r => r.driver === 'valetudo').map(r => r.id + '@' + r.valetudo.topic).join();
+const ours = r => r.driver === 'valetudo' && !!r.valetudo && typeof r.valetudo.topic === 'string' && !!r.valetudo.topic;
+const robotsKey = site => site.robots.filter(ours).map(r => r.id + '@' + r.valetudo.topic).join();
 
 function init(site) {
   const st = { key: robotsKey(site), boot: BOOT, robots: {} };
-  for (const r of site.robots) if (r.driver === 'valetudo')
-    st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r), status: null, flag: null, err: null,
-      battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, checkUntil: 0, paused: false, blocked: false, why: null };
+  for (const r of site.robots) {
+    if (r.driver !== 'valetudo') continue;
+    if (!ours(r)) { console.warn(`[valetudo] ${r.id}: thiếu "valetudo": { "topic": "<prefix>/<identifier>" } trong site.json — bỏ qua robot này`); continue; }
+    st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r), status: null, err: null,
+      battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, seenMoving: false, checkUntil: 0,
+      paused: false, blocked: false, why: null };
+  }
   return st;
 }
 
 const op = (b, cmd) => ({ topic: b.topic + '/BasicControlCapability/operation/set', payload: cmd });
 // The publish that drives the robot to its goal.
 function send(b, now) {
-  b.sentAt = now; b.checkUntil = 0;
+  b.sentAt = now; b.seenMoving = false; b.checkUntil = 0;
   const g = b.goal;
   return g.home ? op(b, 'HOME')
     : { topic: b.topic + '/GoToLocationCapability/go/set', payload: JSON.stringify({ coordinates: { x: Math.round(g.coords.x), y: Math.round(g.coords.y) } }) };
@@ -76,10 +100,19 @@ function arrive(id, b, events) {
   events.push({ event: 'arrived', robot: id, token: b.goal.token });
   b.goal = null; b.blocked = false; b.why = null; b.checkUntil = 0;
 }
+const block = (b) => { b.blocked = true; b.why = 'object'; b.checkUntil = 0; };
 // Stopped away from the goal by the last known position: arrived after all if a fresh position says so.
 function check(id, b, now, events) {
   if (near(b)) arrive(id, b, events);
-  else if (now >= b.checkUntil) { b.checkUntil = 0; b.blocked = true; b.why = 'object'; }
+  else if (now >= b.checkUntil) block(b);
+}
+// The robot stopped (trust: after it was seen moving): arrived, blocked, or wait for a fresh position.
+function end(id, b, now, events, trust) {
+  if (b.status === 'error' || b.err) block(b);
+  else if (b.goal.home) b.status === 'docked' ? arrive(id, b, events) : block(b);
+  else if (near(b) || (trust && !b.pos)) arrive(id, b, events);   // no position (map data off): trust status
+  else if (b.pos) b.checkUntil = now + POS_WAIT_MS;   // map-data may lag the status
+  else block(b);
 }
 // Sets off towards b.goal (goto / resume / clear): stop first if moving, arrive at once if already there.
 function start(id, b, now, events, mqtt) {
@@ -127,7 +160,10 @@ function handle(st, site, input, now) {
     case 'tick':
       for (const [rid, r] of Object.entries(st.robots)) {
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
-        if (r.checkUntil && now >= r.checkUntil) check(rid, r, now, events);
+        if (!r.goal || r.paused || r.blocked || r.pending) continue;
+        if (r.checkUntil) { if (now >= r.checkUntil) check(rid, r, now, events); }
+        else if (!r.seenMoving && STOPPED.includes(r.status) && now - r.sentAt >= NOMOVE_MS) end(rid, r, now, events, false);
+        else if (now - r.sentAt >= TRIP_MS) block(r);
       }
       events.push(telemetry(st, site));
       break;
@@ -141,22 +177,20 @@ function ingest(st, input, now, events, mqtt) {
     if (!input.topic.startsWith(b.topic + '/')) continue;
     const key = input.topic.slice(b.topic.length + 1), v = String(input.payload);
     if (key === '$state') b.online = v === 'ready';
-    else if (key === 'StatusStateAttribute/flag') b.flag = v;
     else if (key === 'StatusStateAttribute/error_description') b.err = v && v !== 'No error' ? v : null;
-    else if (key === 'BatteryStateAttribute/level') b.battery = +v;
+    else if (key === 'BatteryStateAttribute/level') { if (v.trim() !== '' && Number.isFinite(Number(v))) b.battery = Number(v); }   // '' = retained cleared
     else if (key === 'MapData/map-data') {
       b.pos = parseMap(input.payload) || b.pos;
-      if (b.checkUntil && b.goal) check(id, b, now, events);
+      if (b.checkUntil && b.goal && !b.blocked) check(id, b, now, events);
     }
     else if (key === 'StatusStateAttribute/status') {
       b.status = v;
-      if (!b.goal || b.paused || b.why === 'noroute' || !STOPPED.includes(v)) continue;
-      if (b.pending) { b.pending = false; mqtt.push(send(b, now)); continue; }
-      if (now - b.sentAt < STALE_MS) continue;   // the robot may still report its old state
-      if (v === 'error' || (b.goal.home && v !== 'docked')) { b.blocked = true; b.why = 'object'; }
-      else if (b.goal.home || !b.pos || near(b)) arrive(id, b, events);   // no position: trust status
-      else b.checkUntil = now + POS_WAIT_MS;   // map-data may lag the status
-
+      if (!b.goal || b.paused || b.blocked) continue;   // blocked (incl. noroute): only resume / clear restart the trip
+      if (b.pending) { if (STOPPED.includes(v)) { b.pending = false; mqtt.push(send(b, now)); } continue; }
+      if (MOVING.includes(v)) { b.seenMoving = true; b.checkUntil = 0; continue; }
+      if (now - b.sentAt < STALE_MS) continue;   // a stopped status this soon may be the old one
+      if (v === 'error') block(b);
+      else if (STOPPED.includes(v) && b.seenMoving) end(id, b, now, events, true);   // idle before 'moving' (leaving the dock) is no trip end
     }
   }
 }

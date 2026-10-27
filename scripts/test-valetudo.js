@@ -79,7 +79,7 @@ const SITE = {
   assert.strictEqual(tel().nav, 'moving');
 
   // c) stops far away -> blocked 'object'; resume resends go/set; later arrives
-  now += 3000; pos(3000, 3000);
+  now += 3000; status('moving'); pos(3000, 3000);
   assert.deepStrictEqual(status('idle').events, []);
   assert.strictEqual(tel().blocked, false);   // waits up to 5 s for a fresh position
   now += 5000;
@@ -193,6 +193,42 @@ const SITE = {
   assert.deepStrictEqual(H({ cmd: 'reset' }).mqtt, [{ topic: OP, payload: 'STOP' }]);
   assert.deepStrictEqual(H({ cmd: 'reset' }).mqtt, []);
 
+  // --- review 2 ---
+  const err = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/error_description', payload: s });
+  // 1) leaving the dock: docked -> idle -> moving. The idle before 'moving' is not a trip end.
+  fresh(); goto('kitchen', 20); now += 2000;
+  assert.deepStrictEqual(status('idle').events, []);                       // no map data: no fake arrival
+  status('moving'); now += 3000; pos(2150, 2700);
+  assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 20 }]);
+  fresh(); pos(1000, 1000); goto('kitchen', 21); now += 2000;
+  status('idle'); status('moving');                                        // far idle before moving: no blocked later
+  now += 6000; H({ cmd: 'tick' });
+  assert.strictEqual(tel().blocked, false);
+  // 2) go/set silently rejected (or a trip shorter than the stale window): no status at all
+  fresh(); goto('kitchen', 22);
+  now += 9000; H({ cmd: 'tick' }); assert.strictEqual(tel().blocked, false);
+  now += 1000; H({ cmd: 'tick' });
+  t = tel(); assert.strictEqual(t.blocked, true); assert.strictEqual(t.why, 'object');   // never moved, no position: not "arrived"
+  fresh(); goto('kitchen', 23); pos(2150, 2700); now += 10000;             // short trip ended inside the window
+  assert.deepStrictEqual(H({ cmd: 'tick' }).events.filter(e => e.event === 'arrived'), [{ event: 'arrived', robot: 'R1', token: 23 }]);
+  //    trip that never ends -> blocked after 3 min
+  fresh(); goto('kitchen', 24); now += 2000; status('moving');
+  now += 177000; H({ cmd: 'tick' }); assert.strictEqual(tel().blocked, false);
+  now += 1000; H({ cmd: 'tick' }); assert.strictEqual(tel().why, 'object');
+  // 3) blocked stays blocked: staff lifts a stuck robot, Valetudo reports No error + idle -> no fake arrival
+  fresh(); goto('T01', 25); now += 2000; status('moving'); now += 3000;
+  err('Wheel stuck'); status('error');
+  assert.strictEqual(tel().blocked, true);
+  err('No error');
+  assert.deepStrictEqual(status('idle').events, []);
+  assert.strictEqual(tel().blocked, true);
+  assert.deepStrictEqual(H({ cmd: 'sim', robot: 'R1', fault: 'clear' }).mqtt, [{ topic: GO, payload: T01 }]);   // only clear/resume restart it
+  // 5) empty / junk battery payload (retained message cleared) keeps the last level
+  fresh();
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: 'n/a' });
+  assert.strictEqual(tel().battery, 90);
+
   console.log('✓ trip end / blocked / redirect');
 }
 
@@ -225,4 +261,22 @@ const SITE = {
   V.handle(val, SITE2, { cmd: 'mqtt', topic: 'valetudo/Real/$state', payload: 'ready' }, 0);
   assert.strictEqual(val.robots.R1.online, true);
   console.log('✓ valetudo state rebuilt when site.json changes');
+}
+
+{
+  // robot marked driver 'valetudo' but its valetudo block forgotten -> skipped (with a warning), no throw
+  const BAD = { ...SITE, robots: [{ id: 'R1', dock: 'D1', driver: 'valetudo' }] };
+  const warn = console.warn; let warned = 0; console.warn = () => warned++;
+  const st = V.init(BAD);
+  assert.deepStrictEqual(V.handle(st, BAD, { cmd: 'tick' }, 0).events, [{ event: 'telemetry', robots: [] }]);
+  console.warn = warn;
+  assert.strictEqual(warned, 1);
+  // map-data with a robot entity but no usable coordinates
+  const zlib = require('zlib');
+  assert.strictEqual(V.parseMap(zlib.deflateSync(JSON.stringify({ entities: [{ type: 'robot_position', points: [] }] }))), null);
+  // mirrored Valetudo map (x_r = 100x + 1000, y_r = -100y + 3000): needs >= 3 points to tell
+  const mir = [[3, 11.5], [11.5, 4.5], [7.5, 1.2]].map(([x, y]) => ({ site: { x, y }, robot: { x: 100 * x + 1000, y: -100 * y + 3000 } }));
+  assert.deepStrictEqual(V.toSite(V.fit(mir), { x: 2450, y: 2200 }), { x: 14.5, y: 8 });
+  assert.deepStrictEqual(V.toSite(V.fit(pairs.concat([{ site: { x: 14.5, y: 8 }, robot: { x: 1800, y: 1550 } }])), { x: 1000 + 120, y: 3000 - 750 }), { x: 7.5, y: 1.2 });   // not mirrored stays so
+  console.log('✓ config / parse robustness, mirrored map');
 }

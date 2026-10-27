@@ -12,7 +12,9 @@ curl -L -o robot-nodered.tar.gz <link> && rm -rf ~/bundle && mkdir ~/bundle \
   && tar xzf robot-nodered.tar.gz -C ~/bundle && bash ~/bundle/termux/install.sh
 ```
 
-Script cài thêm Mosquitto (broker MQTT, cổng 1883) và in ra `MQTT broker cho Valetudo : <IP>:1883`.
+Script cài thêm Mosquitto (broker MQTT) và in ra `MQTT broker cho Valetudo : <IP>:1883  user: valetudo  pass: …`.
+Robot vào cổng 1883 **có mật khẩu** (không có thì ai cùng Wi-Fi nhà hàng cũng điều khiển được robot); Node-RED dùng cổng 1884 chỉ trong máy.
+Mật khẩu tạo một lần, giữ qua các lần cài lại: `cat ~/robot/.mqtt-pass`.
 Đặt **IP cố định** cho điện thoại trên router (DHCP reservation) trước bước 1 — Valetudo lưu IP này, đổi IP là robot mất kết nối.
 Cài lại sẽ ghi đè `~/robot/site.json`; bản cũ (nếu đã cấu hình Valetudo) được lưu ở `~/robot/site.json.bak.<ngày-giờ>`.
 
@@ -25,7 +27,7 @@ Mở Valetudo của robot (`http://192.168.0.105`) → **Connectivity → MQTT**
 | Enabled | bật |
 | Host | IP điện thoại (dòng `MQTT broker cho Valetudo`) |
 | Port | `1883` |
-| Username / Password | để trống |
+| Username / Password | `valetudo` / mật khẩu in ra lúc cài (`cat ~/robot/.mqtt-pass`) |
 | TLS | tắt |
 | **Provide map data** | **bật** (để biết robot đang ở đâu; không bật thì chỉ tin trạng thái robot) |
 
@@ -71,6 +73,8 @@ nano ~/robot/site.json
 - Bỏ R2/R3 (robot giả lập) trong buổi thử, nếu không chúng sẽ "cướp" lệnh giao `robot: any`. Muốn giữ thì trên màn trạm chọn đích danh R1.
 - `arriveCm`: robot dừng cách điểm ≤ bấy nhiêu cm thì coi là đã tới (mặc định 40).
 - Bản đồ trên màn hình được căn theo ≥ 2 điểm có trong `valetudo.points` — vị trí robot trên UI chỉ để xem, sai vài chục cm là bình thường.
+- Với **2 điểm**, sơ đồ sàn trong `site.json` phải **cùng chiều** với bản đồ Valetudo (không lật gương); nếu chấm robot trên UI chạy ngược chiều, khai thêm điểm thứ 3 — adapter sẽ tự nhận ra bản đồ bị lật. Việc robot chạy tới đúng điểm không phụ thuộc vào chuyện này.
+- Thiếu khối `"valetudo": { "topic": … }` ở robot có `"driver": "valetudo"` → robot bị bỏ qua (UI báo mất kết nối), log Node-RED có dòng `[valetudo] R1: thiếu …`.
 
 Khởi động lại Node-RED (vòng boot tự chạy lại sau 5 s):
 
@@ -82,18 +86,18 @@ pkill -f node-red
 
 a. **MQTT thông** — trên Termux:
 ```sh
-mosquitto_sub -t 'valetudo/+/StatusStateAttribute/#' -t 'valetudo/+/BatteryStateAttribute/#' -t 'valetudo/+/$state' -v
+mosquitto_sub -p 1884 -t 'valetudo/+/StatusStateAttribute/#' -t 'valetudo/+/BatteryStateAttribute/#' -t 'valetudo/+/$state' -v
 ```
-Phải thấy `status docked`/`idle`, `level 87`, `$state ready`. Không thấy gì → xem lại bước 1 (IP, cùng Wi-Fi, Wi-Fi khách có cách ly thiết bị không).
+Phải thấy `status docked`/`idle`, `level 87`, `$state ready`. Không thấy gì → xem lại bước 1 (IP, user/pass, cùng Wi-Fi, Wi-Fi khách có cách ly thiết bị không). Log broker: Valetudo → Connectivity → MQTT hiện lỗi kết nối nếu sai mật khẩu.
 
 b. **Adapter nhận đúng** — mở `http://<IP>:1880/station.html?role=ql`: R1 có pin, không báo "mất kết nối".
 
 c. **Lệnh tay** (người đứng cạnh robot):
 ```sh
 T=valetudo/InsecureYellowishGoldfish
-mosquitto_pub -t $T/GoToLocationCapability/go/set -m '{"coordinates":{"x":2351,"y":2544}}'
-mosquitto_pub -t $T/BasicControlCapability/operation/set -m STOP
-mosquitto_pub -t $T/BasicControlCapability/operation/set -m HOME
+mosquitto_pub -p 1884 -t $T/GoToLocationCapability/go/set -m '{"coordinates":{"x":2351,"y":2544}}'
+mosquitto_pub -p 1884 -t $T/BasicControlCapability/operation/set -m STOP
+mosquitto_pub -p 1884 -t $T/BasicControlCapability/operation/set -m HOME
 ```
 Robot phải tới đúng chỗ đã chấm ở bước 2.
 
@@ -107,7 +111,7 @@ e. **Dừng / chạy tiếp / dừng khẩn** khi robot đang chạy: robot ph�
 |---|---|
 | "R1 mất kết nối" | Robot báo `$state lost` hoặc chưa gửi gì: kiểm tra bậc 4a, IP điện thoại, robot còn bật Wi-Fi. |
 | "R1 không có lộ trình tới …" | Điểm đó chưa có trong `valetudo.points` (hoặc sai tên id). Thêm toạ độ, `pkill -f node-red`. |
-| "R1 bị chặn … cần nhân viên" | Robot dừng xa điểm đích hơn `arriveCm`, hoặc Valetudo báo lỗi (kẹt bánh, nhấc lên…). Dọn lối rồi bấm **Đã dọn lối đi** (màn trạm hoặc màn robot) → adapter gửi lại lệnh tới điểm cũ. Lỗi Valetudo (kẹt bánh…) phải xử lý tại robot; hết lỗi là tự hết cảnh báo. |
+| "R1 bị chặn … cần nhân viên" | Robot dừng xa điểm đích hơn `arriveCm`, Valetudo báo lỗi (kẹt bánh, nhấc lên…), robot không nhúc nhích 10 s sau lệnh (từ chối lệnh), hoặc một chuyến chạy quá 3 phút. Đã bị chặn thì robot tự đứng yên/hết lỗi cũng **không** tính là đã tới. Dọn lối rồi bấm **Đã dọn lối đi** (màn trạm hoặc màn robot) → adapter gửi lại lệnh tới điểm cũ. Lỗi Valetudo (kẹt bánh…) phải xử lý tại robot; hết lỗi là tự hết cảnh báo. |
 | Robot dừng gần nhưng hay báo bị chặn | Tăng `arriveCm` (vd. 60) hoặc lấy lại toạ độ. |
 | Robot đi sai chỗ | Bản đồ Valetudo đã tạo lại → lấy lại toạ độ (bước 2), khoá bản đồ. |
 | Robot đổi hướng chậm ~2 s | Bình thường: adapter dừng robot rồi mới gửi đích mới, để chạy được trên mọi model. |

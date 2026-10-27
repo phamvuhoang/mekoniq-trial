@@ -1,9 +1,11 @@
-// Fake Valetudo robot on a local broker, for testing the Valetudo adapter without hardware:
-//   node scripts/fake-valetudo.js [valetudo/Bot] [mqtt://127.0.0.1:1883]
+// Fake Valetudo robot on a local broker, for testing the Valetudo adapter without hardware (dev only, run from
+// the repo: needs the `mqtt` devDependency):
+//   mosquitto -p 1884 &   # the port Node-RED's mqtt-broker node uses
+//   node scripts/fake-valetudo.js [valetudo/Bot] [mqtt://127.0.0.1:1884]
 // go/set -> moving, 4 s later idle at the target; HOME -> returning, 4 s later docked; STOP -> idle.
 const mqtt = require('mqtt'), zlib = require('zlib');
 const T = process.argv[2] || 'valetudo/Bot';
-const c = mqtt.connect(process.argv[3] || 'mqtt://127.0.0.1:1883', { will: { topic: T + '/$state', payload: 'lost', retain: true } });
+const c = mqtt.connect(process.argv[3] || 'mqtt://127.0.0.1:1884', { will: { topic: T + '/$state', payload: 'lost', retain: true } });
 const dock = { x: 1000, y: 1000 };
 let pos = { ...dock }, status = 'docked', timer = null;
 const pub = (k, v) => c.publish(`${T}/${k}`, v, { retain: true });

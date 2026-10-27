@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "MEKONIQ Serve S1",
     "disabled": false,
-    "info": "Kitchen/Station tablets -> Mission Orchestrator -> Route cmd by driver -> Robot Adapter (simulator | Valetudo over MQTT) -> telemetry.\nUI: / (station.html, robot.html, table.html). WS: /ws.\nSite map, robots, timings: data/site.json."
+    "info": "Kitchen/Station tablets -> Mission Orchestrator -> Robot Adapter (simulator | Valetudo over MQTT; each takes only its own robots) -> telemetry.\nUI: / (station.html, robot.html, table.html). WS: /ws.\nSite map, robots, timings: data/site.json.\nMQTT: Node-RED uses the on-device listener 127.0.0.1:1884 (no login); the robot uses :1883 with a password (termux/install.sh)."
   },
   {
     "id": "ws_listener",
@@ -55,7 +55,8 @@
         "ws_out"
       ],
       [
-        "route"
+        "sim",
+        "val"
       ]
     ]
   },
@@ -127,9 +128,9 @@
   {
     "id": "mqtt_broker",
     "type": "mqtt-broker",
-    "name": "Mosquitto (Valetudo)",
+    "name": "Mosquitto local (Valetudo)",
     "broker": "127.0.0.1",
-    "port": "1883",
+    "port": "1884",
     "clientid": "",
     "autoConnect": true,
     "usetls": false,
@@ -142,29 +143,6 @@
     "willTopic": "",
     "userProps": "",
     "sessionExpiry": ""
-  },
-  {
-    "id": "route",
-    "type": "function",
-    "z": "tab",
-    "name": "Route cmd by driver",
-    "func": "// robots[].driver === 'valetudo' -> Valetudo adapter, else simulator. Cmds without a robot (map, reset, obstacle) go to both.\nconst { site } = global.get('mekoniq');\nif (!msg.payload.robot) return [msg, msg];\nconst d = site.robots.find(r => r.id === msg.payload.robot);\nreturn d && d.driver === 'valetudo' ? [null, msg] : [msg, null];",
-    "outputs": 2,
-    "timeout": 0,
-    "noerr": 0,
-    "initialize": "",
-    "finalize": "",
-    "libs": [],
-    "x": 640,
-    "y": 220,
-    "wires": [
-      [
-        "sim"
-      ],
-      [
-        "val"
-      ]
-    ]
   },
   {
     "id": "val",

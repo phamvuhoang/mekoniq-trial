@@ -28,8 +28,22 @@ BAK="$APP/site.json.bak.$(date +%Y%m%d-%H%M%S)"
 [ -f "$APP/site.json" ] && grep -q '"driver"' "$APP/site.json" && cp "$APP/site.json" "$BAK" && SITE_BAK=1
 
 cp -r "$HERE/data/." "$APP/"
-# Mosquitto 2.x listens on localhost only by default; the robot connects over the Wi-Fi. LAN only, no login.
-printf "listener 1883 0.0.0.0\nallow_anonymous true\n" > "$APP/mosquitto.conf"
+# MQTT: the robot connects over the Wi-Fi on :1883 with a password (anyone on the Wi-Fi could drive it otherwise);
+# Node-RED uses an on-device-only listener on :1884 without login. Password made once, kept across reinstalls.
+MQTT_USER=valetudo
+[ -s "$APP/.mqtt-pass" ] || { head -c 64 /dev/urandom | base64 | tr -dc A-Za-z0-9 | head -c 16 > "$APP/.mqtt-pass"; chmod 600 "$APP/.mqtt-pass"; }
+MQTT_PW=$(cat "$APP/.mqtt-pass")
+mosquitto_passwd -b -c "$APP/mosquitto.passwd" "$MQTT_USER" "$MQTT_PW"
+chmod 600 "$APP/mosquitto.passwd"
+# per_listener_settings: deprecated in Mosquitto 2.1 (warning only), still what 2.0.x needs.
+cat > "$APP/mosquitto.conf" <<CONF
+per_listener_settings true
+listener 1884 127.0.0.1
+allow_anonymous true
+listener 1883 0.0.0.0
+allow_anonymous false
+password_file $APP/mosquitto.passwd
+CONF
 
 # Editor (/admin) password: asked once, stored as a bcrypt hash. UI pages stay open to tablets on the Wi-Fi.
 if [ ! -f "$ENV" ]; then
@@ -74,7 +88,7 @@ Mở trên các tablet cùng Wi-Fi (Chrome):
   Màn hình bếp        : http://$IP:$P/station.html?role=bep
   Màn hình robot R1   : http://$IP:$P/robot.html?robot=R1
   Trình soạn (admin)  : http://$IP:$P/admin
-MQTT broker cho Valetudo : $IP:1883
+MQTT broker cho Valetudo : $IP:1883  user: $MQTT_USER  pass: $MQTT_PW  (xem lại: cat ~/robot/.mqtt-pass)
 Đặt IP cố định cho máy này trên router (DHCP reservation) trước khi khai vào Valetudo.
 Cấu hình robot Valetudo: ~/bundle/docs/valetudo-setup.md
 MSG
