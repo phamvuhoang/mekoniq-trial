@@ -17,8 +17,10 @@ module.exports = {
         { path: require("path").join(__dirname, "lib"), root: "/lib/" }
     ],
     // Persist orders/robot state across restarts (survives reboot / crash).
+    // default: persisted (orders, robot state, live site config). memory: robot maps (big, RAM only).
     contextStorage: {
-        default: { module: "localfilesystem", config: { flushInterval: 5 } }
+        default: { module: "localfilesystem", config: { flushInterval: 1 } },
+        memory: { module: "memory" }
     },
     logging: { console: { level: "info", metrics: false, audit: false } },
     editorTheme: { tours: false }

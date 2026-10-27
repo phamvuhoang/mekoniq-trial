@@ -6,9 +6,9 @@ const zlib = require('zlib');
 //             <topic>/BasicControlCapability/operation/set HOME | STOP
 //   subscribe <topic>/StatusStateAttribute/status|error_description, BatteryStateAttribute/level, $state,
 //             MapData/map-data (zlib-deflated JSON, robot_position entity)
-// The robot plans its own path on its own map; goals are site.valetudo.points[id] in robot cm.
-// Robot cm -> site m (for the UI only) is a similarity transform (mirrored if that fits better, >= 3 points)
-// fitted on the points known in both.
+// The robot plans its own path on its own map; goals are robots[].valetudo.points[id] in robot cm (each robot has
+// its own map, taught in setup.html). Robot cm -> site m (only for the hand-drawn floor plan of the web demo) is a
+// similarity transform (mirrored if that fits better, >= 3 points) fitted on the points that have m coordinates too.
 // Trip end = a stopped status after 'moving' was seen: near the goal (or no position known) -> arrived, else blocked.
 // Never seen moving nomoveSec (10 s) after the command (rejected, or a trip inside the 1.5 s stale window) -> judged by position.
 // Blocked stays blocked until resume / "Đã dọn lối đi"; any trip still running after tripSec (3 min) -> blocked.
@@ -45,14 +45,11 @@ function toSite(T, p) {
   return { x: r2(T.a * p.x - T.b * y + T.tx), y: r2(T.b * p.x + T.a * y + T.ty) };
 }
 
-const calibs = new WeakMap();   // site.json is loaded once per process
-function calib(site) {
-  if (calibs.has(site)) return calibs.get(site);
-  const points = (site.valetudo && site.valetudo.points) || {};
-  const pairs = Object.keys(points).filter(id => site.points[id]).map(id => ({ site: site.points[id], robot: points[id] }));
-  const c = { T: fit(pairs), points };
-  calibs.set(site, c);
-  return c;
+// Per-robot: its taught points (cm) and, when the site also has m coordinates, the cm -> m transform.
+function calib(site, r) {
+  const points = (r.valetudo && r.valetudo.points) || {};
+  const pairs = Object.keys(points).filter(id => site.points[id] && Number.isFinite(site.points[id].x)).map(id => ({ site: site.points[id], robot: points[id] }));
+  return { T: fit(pairs), points };
 }
 
 // Robot position {x, y, angle} (cm) from a MapData/map-data payload, or null if it is not one we can read.
@@ -77,15 +74,19 @@ const BOOT = Date.now() + Math.random();
 const ours = r => r.driver === 'valetudo' && !!r.valetudo && typeof r.valetudo.topic === 'string' && !!r.valetudo.topic;
 const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id, r.dock, r.valetudo]));   // topic or a knob edited -> rebuild
 
-function init(site) {
+// What the robot has told us: survives a rebuild (knob / points edited) as long as the topic is the same robot.
+const INGESTED = ['status', 'err', 'battery', 'pos', 'online'];
+function init(site, old) {
   const st = { key: robotsKey(site), boot: BOOT, robots: {} };
   for (const r of site.robots) {
     if (r.driver !== 'valetudo') continue;
     if (!ours(r)) { console.warn(`[valetudo] ${r.id}: thiếu "valetudo": { "topic": "<prefix>/<identifier>" } trong site.json — bỏ qua robot này`); continue; }
-    st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r),
+    const b = st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r),
       nomoveMs: knob(r, 'nomoveSec', 10) * 1000, tripMs: knob(r, 'tripSec', 180) * 1000, status: null, err: null,
       battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, seenMoving: false, checkUntil: 0,
-      paused: false, blocked: false, why: null };
+      paused: false, blocked: false, why: null, ...calib(site, r) };
+    const prev = old && old.robots && old.robots[r.id];
+    if (prev && prev.topic === b.topic) for (const k of INGESTED) b[k] = prev[k];
   }
   return st;
 }
@@ -126,7 +127,7 @@ function start(id, b, now, events, mqtt) {
 
 // input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload} | {cmd:'link', up}. Returns {events, mqtt}.
 function handle(st, site, input, now) {
-  if (st.key !== robotsKey(site)) { for (const k of Object.keys(st)) delete st[k]; Object.assign(st, init(site)); }   // site.json edited
+  if (st.key !== robotsKey(site)) { const fresh = init(site, st); for (const k of Object.keys(st)) delete st[k]; Object.assign(st, fresh); }   // config edited
   if (st.boot !== BOOT) { st.boot = BOOT; for (const r of Object.values(st.robots)) r.online = false; }
   const events = [], mqtt = [], id = input.robot, b = st.robots[id];
   switch (input.cmd) {
@@ -134,8 +135,7 @@ function handle(st, site, input, now) {
       if (!b) break;
       // same destination resent (orchestrator re-syncs goals after a map change): keep driving, no STOP
       if (b.goal && b.goal.to === input.to && !b.blocked) { b.goal.token = input.token; break; }
-      const { points } = calib(site);
-      b.goal = { to: input.to, token: input.token, home: input.to === b.dock, coords: points[input.to] || null };
+      b.goal = { to: input.to, token: input.token, home: input.to === b.dock, coords: b.points[input.to] || null };
       b.blocked = false; b.why = null; b.checkUntil = 0;
       if (!b.goal.home && !b.goal.coords) { b.pending = false; b.blocked = true; b.why = 'noroute'; break; }
       if (b.paused) { b.pending = false; break; }   // paused / e-stopped: only resume may drive it
@@ -199,10 +199,11 @@ function ingest(st, input, now, events, mqtt) {
 }
 
 function telemetry(st, site) {
-  const { T } = calib(site), robots = [];
+  const robots = [];
   for (const [id, b] of Object.entries(st.robots)) {
     if (!b.online || b.status === null || b.battery === null) continue;   // not heard from (yet): orchestrator shows offline
-    const p = b.pos && T ? toSite(T, b.pos) : site.points[b.dock] || { x: 0, y: 0 };
+    const d = site.points[b.dock] || {};
+    const p = b.pos && b.T ? toSite(b.T, b.pos) : { x: d.x || 0, y: d.y || 0 };
     const blocked = b.blocked || !!b.err, moving = !!b.goal && !b.paused && !blocked;
     robots.push({ id, x: p.x, y: p.y, battery: b.battery, moving, blocked, nav: moving ? 'moving' : 'idle',
       why: b.err ? 'object' : b.why, path: [], rem: 0 });

@@ -12,9 +12,9 @@ console.log('✓ fit/toSite');
 
 const SITE = {
   points: { kitchen: { x: 3, y: 11.5 }, T01: { x: 11.5, y: 4.5 }, T06: { x: 14.5, y: 8 }, D1: { x: 7.5, y: 1.2 } },
-  robots: [{ id: 'R1', dock: 'D1', driver: 'valetudo', valetudo: { topic: 'valetudo/Bot' } }, { id: 'R2', dock: 'D1' }],
-  valetudo: { points: { kitchen: { x: 2150, y: 2700 }, T01: { x: 1450, y: 1850 } } },
+  robots: [{ id: 'R1', dock: 'D1', driver: 'valetudo', valetudo: { topic: 'valetudo/Bot', points: { kitchen: { x: 2150, y: 2700 }, T01: { x: 1450, y: 1850 } } } }, { id: 'R2', dock: 'D1' }],
 };
+const PTS = SITE.robots[0].valetudo.points;
 {
   const st = V.init(SITE); let now = 1e12;
   const H = (i) => V.handle(st, SITE, i, now);
@@ -257,7 +257,7 @@ const SITE = {
   assert.deepStrictEqual(S.handle(old, SIM, { cmd: 'tick' }, 1e12)[0].robots.map(r => r.id), ['R2']);
   console.log('✓ simulator ignores valetudo robots');
   // Valetudo state saved with another topic (placeholder -> real identifier) -> rebuilt
-  const val = V.init(SITE), SITE2 = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { topic: 'valetudo/Real' } }] };
+  const val = V.init(SITE), SITE2 = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { topic: 'valetudo/Real', points: PTS } }] };
   V.handle(val, SITE2, { cmd: 'mqtt', topic: 'valetudo/Real/$state', payload: 'ready' }, 0);
   assert.strictEqual(val.robots.R1.online, true);
   console.log('✓ valetudo state rebuilt when site.json changes');
@@ -283,7 +283,7 @@ const SITE = {
 
 {
   // per-robot knobs in site.json: valetudo.nomoveSec / tripSec (like arriveCm)
-  const K = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { topic: 'valetudo/Bot', nomoveSec: 20, tripSec: 60 } }] };
+  const K = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { topic: 'valetudo/Bot', nomoveSec: 20, tripSec: 60, points: PTS } }] };
   let now = 1e12; const st = V.init(K);
   const H = (i) => V.handle(st, K, i, now), tel = () => H({ cmd: 'tick' }).events[0].robots[0];
   const status = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: s });
@@ -300,4 +300,20 @@ const SITE = {
   V.handle(st, K2, { cmd: 'tick' }, now);
   assert.strictEqual(st.robots.R1.arriveCm, 80);
   console.log('✓ nomoveSec / tripSec knobs');
+}
+
+{
+  // Task 5: a knob edited in setup.html rebuilds the adapter state but keeps what the robot already told us
+  let now = 1e12; const st = V.init(SITE);
+  const H = (i, s = SITE) => V.handle(st, s, i, now);
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'docked' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '87' });
+  const K2 = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, arriveCm: 80 } }, SITE.robots[1]] };
+  const t = H({ cmd: 'tick' }, K2).events[0].robots;
+  assert.strictEqual(t.length, 1); assert.strictEqual(t[0].battery, 87); assert.strictEqual(st.robots.R1.arriveCm, 80);
+  // a new topic is a different robot: nothing known until it speaks
+  const K3 = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, topic: 'valetudo/Other' } }, SITE.robots[1]] };
+  assert.deepStrictEqual(H({ cmd: 'tick' }, K3).events[0].robots, []);
+  console.log('✓ knob edit keeps ingested state; topic change does not');
 }
