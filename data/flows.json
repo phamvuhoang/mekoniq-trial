@@ -221,5 +221,52 @@
         "val"
       ]
     ]
+  },
+  {
+    "id": "map_in",
+    "type": "http in",
+    "z": "tab",
+    "name": "GET /api/map/:robot",
+    "url": "/api/map/:robot",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 420,
+    "wires": [
+      [
+        "map_fn"
+      ]
+    ]
+  },
+  {
+    "id": "map_fn",
+    "type": "function",
+    "z": "tab",
+    "name": "robot map (memory ctx)",
+    "func": "// Latest Valetudo map of one robot, kept in RAM by the Valetudo adapter node (global 'vmap:<id>', memory store).\nconst m = global.get('vmap:' + msg.req.params.robot, 'memory');\nmsg.statusCode = m ? 200 : 404;\nmsg.headers = { 'Cache-Control': 'no-store' };\nmsg.payload = m || { error: 'no map yet' };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 360,
+    "y": 420,
+    "wires": [
+      [
+        "map_out"
+      ]
+    ]
+  },
+  {
+    "id": "map_out",
+    "type": "http response",
+    "z": "tab",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 560,
+    "y": 420,
+    "wires": []
   }
 ]

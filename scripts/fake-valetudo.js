@@ -10,7 +10,16 @@ const dock = { x: 1000, y: 1000 };
 let pos = { ...dock }, status = 'docked', timer = null;
 const pub = (k, v) => c.publish(`${T}/${k}`, v, { retain: true });
 const state = (s) => { status = s; pub('StatusStateAttribute/status', s); console.log(new Date().toISOString(), s, pos); };
-const map = () => pub('MapData/map-data', zlib.deflateSync(JSON.stringify({ entities: [{ type: 'robot_position', points: [pos.x, pos.y], metaData: { angle: 0 } }] })));
+// Map like a real robot's (cm, 5 cm pixels): a 30 m x 20 m floor, its wall border, one named room, the charger.
+const PX = 5, rows = (x0, x1, y0, y1) => { const px = []; for (let y = y0; y <= y1; y++) px.push(x0, y, x1 - x0 + 1); return px; };
+const LAYERS = [
+  { type: 'floor', compressedPixels: rows(20, 580, 20, 380), metaData: {} },
+  { type: 'wall', compressedPixels: [...rows(19, 581, 19, 19), ...rows(19, 581, 381, 381), ...rows(19, 19, 20, 380), ...rows(581, 581, 20, 380)], metaData: {} },
+  { type: 'segment', compressedPixels: rows(300, 560, 60, 200), metaData: { segmentId: '1', name: 'Sảnh' } },
+];
+let angle = 0;
+const map = () => pub('MapData/map-data', zlib.deflateSync(JSON.stringify({ size: { x: 3000, y: 2000 }, pixelSize: PX, layers: LAYERS, metaData: { version: 2 },
+  entities: [{ type: 'robot_position', points: [pos.x, pos.y], metaData: { angle } }, { type: 'charger_location', points: [dock.x, dock.y] }] })));
 function drive(moving, to, end) {
   clearTimeout(timer); state(moving);
   timer = setTimeout(() => { pos = { ...to }; map(); state(end); }, 4000);
