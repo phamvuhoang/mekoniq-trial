@@ -1,6 +1,8 @@
 # Valetudo MQTT Adapter — điều khiển robot thật qua MQTT
 
-Ngày: 2026-10-27 · Trạng thái: **chờ duyệt** · Phạm vi: `trial/` (Node-RED trên Android/Termux)
+> Cập nhật 2026-10-28: toạ độ điểm chuyển sang `robots[].valetudo.points` (dạy trên `setup.html`), bị chặn tự thử lại — xem `2026-10-28-site-config-valetudo-map-design.md`.
+
+Ngày: 2026-10-27 · Trạng thái: **đã triển khai** · Phạm vi: `trial/` (Node-RED trên Android/Termux)
 
 ## 1. Ý định
 

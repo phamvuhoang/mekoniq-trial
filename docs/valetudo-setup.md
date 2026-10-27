@@ -1,7 +1,7 @@
 # Robot Valetudo — cấu hình & chạy thử
 
 Dành cho buổi thử từ xa với đối tác (RustDesk → Termux trên điện thoại chạy Node-RED).
-Thiết kế: `docs/superpowers/specs/2026-10-27-valetudo-mqtt-adapter-design.md`.
+Thiết kế: `docs/superpowers/specs/2026-10-27-valetudo-mqtt-adapter-design.md` (adapter) và `2026-10-28-site-config-valetudo-map-design.md` (cấu hình trên màn hình, bản đồ, tự xử lý khi bị chặn).
 
 > An toàn: luôn có một người đứng cạnh robot, sẵn sàng bấm nút vật lý trên robot. Màn hình trạm chỉ là điều khiển, không phải hệ an toàn.
 
@@ -16,7 +16,7 @@ Script cài thêm Mosquitto (broker MQTT) và in ra `MQTT broker cho Valetudo : 
 Robot vào cổng 1883 **có mật khẩu** (không có thì ai cùng Wi-Fi nhà hàng cũng điều khiển được robot); Node-RED dùng cổng 1884 chỉ trong máy.
 Mật khẩu tạo một lần, giữ qua các lần cài lại: `cat ~/robot/.mqtt-pass`.
 Đặt **IP cố định** cho điện thoại trên router (DHCP reservation) trước bước 1 — Valetudo lưu IP này, đổi IP là robot mất kết nối.
-Cài lại sẽ ghi đè `~/robot/site.json`; bản cũ (nếu đã cấu hình Valetudo) được lưu ở `~/robot/site.json.bak.<ngày-giờ>`.
+Cấu hình (bàn, trạm, điểm dừng, topic, núm chỉnh) nằm trong `~/robot/context/` của Node-RED, **cài lại không mất**. Trước khi cài lại nên bấm **Tải xuống JSON** trong trang Cấu hình để có bản sao.
 
 ## 1. Valetudo → MQTT
 
@@ -36,54 +36,35 @@ Topic của robot = `<prefix>/<identifier>`, vd. `valetudo/InsecureYellowishGold
 
 Nên bật **persistent map** (khoá bản đồ): robot tạo lại bản đồ thì mọi toạ độ ở bước 2 mất hiệu lực.
 
-## 2. Lấy toạ độ cho từng điểm
+## 2. Khai robot và bàn trong trang Cấu hình
 
-Cho bếp và 1–2 bàn (dock không cần — robot tự về sạc):
+Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → ⚙️ Cấu hình; màn trạm tab Giám sát cũng có nút). Ai có link cũng vào được.
 
-1. Valetudo → **Home** (màn bản đồ).
-2. Bấm biểu tượng **ghim** (Go to location).
-3. Chấm vào đúng vị trí robot cần dừng trên bản đồ.
-4. **Giữ** nút **Go to location** → Valetudo copy lệnh dạng `{"coordinates":{"x":2351,"y":2544}}`.
-5. Dán ra đâu đó, ghi `x`, `y` (đơn vị cm) kèm tên điểm.
+1. Thẻ **Robot**: R1 → *Topic MQTT* = `<prefix>/<identifier>` ghi ở bước 1 (vd. `valetudo/InsecureYellowishGoldfish`). Các núm khác để mặc định. Bấm **Lưu**.
+   Sau vài giây, màn trạm `station.html?role=ql` phải thấy R1 có pin. Chưa thấy → bước 4a.
+2. Thẻ **Điểm & bản đồ**: bản đồ robot tự quét hiện lên (cần *Provide map data* ở bước 1; robot phải đã chạy một vòng để có bản đồ). Bấm **+ Thêm bàn** cho từng bàn, sửa tên nếu cần. Bếp, bar, rửa chén, sạc đã có sẵn.
+3. Định vị từng điểm (bếp, rồi từng bàn), chọn một trong hai cách:
+   - **Dùng vị trí robot** (chính xác nhất): lái robot tới đúng chỗ cần dừng bằng app Valetudo (hoặc bê robot tới), đợi chấm robot trên bản đồ nhảy tới đó, chọn điểm trong danh sách → bấm **📍 Dùng vị trí robot**.
+   - Chấm lên bản đồ: chọn điểm trong danh sách → chạm lên bản đồ. Chỉnh ±10 cm bằng các mũi tên.
+   Bấm **▶ Chạy thử tới đây** (robot đang rảnh) để xem robot có tới đúng chỗ không. Dock không cần định vị — robot tự về sạc (`HOME`).
+4. **Lưu**. Có hiệu lực ngay, không cần khởi động lại. Trang nào mở sẵn cũng tự cập nhật.
 
-Tên điểm phải trùng id trong `site.json`: `kitchen` (Bếp), `bar`, `dish`, `T01`…`T12`.
+Điểm dừng tốt: nằm trên lối đi, cạnh mép bàn 30–50 cm về phía khách dễ lấy; không chấm vào giữa bàn hay chỗ ghế kéo ra.
+Robot **vẽ lại bản đồ** (reset map) thì mọi toạ độ sai → bật *persistent map* trong Valetudo. Trang Cấu hình cảnh báo vàng khi thấy kích thước bản đồ đổi.
 
-## 3. Sửa `~/robot/site.json`
+## 3. Núm chỉnh robot (thẻ Robot, chỉ khi cần)
 
-```sh
-pkg install -y nano   # nếu chưa có
-nano ~/robot/site.json
-```
+| Núm | Mặc định | Ý nghĩa |
+|---|---|---|
+| `arriveCm` | 40 | Dừng cách điểm ≤ bấy nhiêu cm là đã tới. |
+| `nomoveSec` | 10 | Sau lệnh mà chừng ấy giây robot chưa chạy → xét theo vị trí (rời dock chậm: 20–30). |
+| `retrySec` / `retryMax` | 15 / 4 | Bị chắn: robot nói "xin nhường đường", tự gửi lại lệnh mỗi 15 s; sau 4 lần mới báo trạm, rồi vẫn tự thử mỗi 60 s. |
+| `stuckSec` / `progressCm` | 20 / 15 | Đang chạy mà không nhúc nhích quá 15 cm trong 20 s → coi là bị chắn. |
+| `acceptCm` | 80 | Thử hết các lần mà robot dừng cách đích ≤ 80 cm (ghế chắn đúng chỗ) → coi là đã tới. 0 = tắt. |
+| `tripSec` | 180 | Một chuyến quá 3 phút → coi là bị chắn (lưới cuối). |
+| `retryErr` | `unreach\|target\|navigat\|path` | Lỗi Valetudo khớp mẫu này (không tới được đích) được thử lại; lỗi khác (kẹt bánh, nhấc lên…) cần người. |
 
-Đổi dòng R1 và khối `valetudo` (giữ nguyên phần còn lại):
-
-```json
-"robots": [
-  { "id": "R1", "dock": "D1", "driver": "valetudo", "valetudo": { "topic": "valetudo/InsecureYellowishGoldfish", "arriveCm": 40, "nomoveSec": 10, "tripSec": 180 } }
-],
-"valetudo": {
-  "points": {
-    "kitchen": { "x": 2351, "y": 2544 },
-    "T01": { "x": 1890, "y": 1420 },
-    "T02": { "x": 2210, "y": 1420 }
-  }
-},
-```
-
-- Bỏ R2/R3 (robot giả lập) trong buổi thử, nếu không chúng sẽ "cướp" lệnh giao `robot: any`. Muốn giữ thì trên màn trạm chọn đích danh R1.
-- Các núm chỉnh (sửa số trên máy rồi `pkill -f node-red`, không cần đóng gói lại):
-  - `arriveCm`: robot dừng cách điểm ≤ bấy nhiêu cm thì coi là đã tới (mặc định 40).
-  - `nomoveSec`: sau lệnh mà chừng ấy giây robot chưa báo `moving` → xét theo vị trí, thường là "bị chặn" (mặc định 10). Robot quay đầu lâu khi rời dock → tăng lên 20–30.
-  - `tripSec`: một chuyến chạy quá chừng ấy giây → "bị chặn" (mặc định 180).
-- Bản đồ trên màn hình được căn theo ≥ 2 điểm có trong `valetudo.points` — vị trí robot trên UI chỉ để xem, sai vài chục cm là bình thường.
-- Với **2 điểm**, sơ đồ sàn trong `site.json` phải **cùng chiều** với bản đồ Valetudo (không lật gương); nếu chấm robot trên UI chạy ngược chiều, khai thêm điểm thứ 3 — adapter sẽ tự nhận ra bản đồ bị lật. Việc robot chạy tới đúng điểm không phụ thuộc vào chuyện này.
-- Thiếu khối `"valetudo": { "topic": … }` ở robot có `"driver": "valetudo"` → robot bị bỏ qua (UI báo mất kết nối), log Node-RED có dòng `[valetudo] R1: thiếu …`.
-
-Khởi động lại Node-RED (vòng boot tự chạy lại sau 5 s):
-
-```sh
-pkill -f node-red
-```
+Mọi chuyến kết thúc bất thường được ghi vào **Nhật ký** trên màn trạm (`R1: chuyến tới Bàn 05 dừng ở 1234,567 (cách 180 cm), status=idle, lỗi=-`) — đọc dòng này để biết robot thật báo gì khi bị chắn rồi chỉnh núm.
 
 ## 4. Kiểm tra theo bậc — hỏng bậc nào dừng ở bậc đó
 
@@ -101,14 +82,14 @@ Phải thấy `status docked`/`idle`, `level 87`, `$state ready`. Không thấy 
 
 b. **Adapter nhận đúng** — mở `http://<IP>:1880/station.html?role=ql`: R1 có pin, không báo "mất kết nối".
 
-c. **Lệnh tay** (người đứng cạnh robot):
+c. **Lệnh tay** — nút **▶ Chạy thử tới đây** trong trang Cấu hình, hoặc (người đứng cạnh robot):
 ```sh
 T=valetudo/InsecureYellowishGoldfish
 mosquitto_pub -p 1884 -t $T/GoToLocationCapability/go/set -m '{"coordinates":{"x":2351,"y":2544}}'
 mosquitto_pub -p 1884 -t $T/BasicControlCapability/operation/set -m STOP
 mosquitto_pub -p 1884 -t $T/BasicControlCapability/operation/set -m HOME
 ```
-Robot phải tới đúng chỗ đã chấm ở bước 2.
+Robot phải tới đúng chỗ đã định vị ở bước 2.
 
 d. **Trọn vòng** — `http://<IP>:1880/station.html?role=bep`, giao 1 bàn cho R1: robot tới bếp → xác nhận → tới bàn → xác nhận → tự về dock. Quay video.
 
@@ -119,10 +100,29 @@ e. **Dừng / chạy tiếp / dừng khẩn** khi robot đang chạy: robot ph�
 | Hiện tượng | Nguyên nhân / cách xử lý |
 |---|---|
 | "R1 mất kết nối" | Robot báo `$state lost` hoặc chưa gửi gì: kiểm tra bậc 4a, IP điện thoại, robot còn bật Wi-Fi. |
-| "R1 không có lộ trình tới …" | Điểm đó chưa có trong `valetudo.points` (hoặc sai tên id). Thêm toạ độ, `pkill -f node-red`. |
-| "R1 bị chặn … cần nhân viên" | Robot dừng xa điểm đích hơn `arriveCm`, Valetudo báo lỗi (kẹt bánh, nhấc lên…), robot không nhúc nhích 10 s sau lệnh (từ chối lệnh), hoặc một chuyến chạy quá 3 phút. Đã bị chặn thì robot tự đứng yên/hết lỗi cũng **không** tính là đã tới. Dọn lối rồi bấm **Đã dọn lối đi** (màn trạm hoặc màn robot) → adapter gửi lại lệnh tới điểm cũ. Lỗi Valetudo (kẹt bánh…) phải xử lý tại robot; hết lỗi là tự hết cảnh báo. |
+| "R1 không có lộ trình tới …" | Điểm đó chưa được định vị cho R1. Trang Cấu hình → Điểm & bản đồ → định vị → Lưu (không cần khởi động lại). |
+| "R1 gặp vật cản — dừng chờ" (màn robot: Xin nhường đường) | Bình thường: robot dừng giữa đường / không nhúc nhích / Valetudo báo không tới được đích. Robot tự gửi lại lệnh sau `retrySec`. Không cần làm gì; muốn đi ngay thì bấm **Đã dọn lối đi**. |
+| "R1 bị chặn … cần nhân viên" | Đã thử `retryMax` lần vẫn không tới, hoặc Valetudo báo lỗi cần người (kẹt bánh, nhấc lên, hộp rác…). Dọn lối: robot tự đi tiếp trong ≤ 60 s, hoặc bấm **Đã dọn lối đi** để đi ngay. Lỗi tại robot: xử lý xong, robot tự chạy tiếp. |
 | "R1 bị chặn" khi robot đang ở dock, chưa giao việc | Valetudo báo lỗi không liên quan di chuyển (hộp rác chưa lắp, cảm biến bẩn…) — xem lỗi trên Valetudo, xử lý tại robot; hết lỗi là hết cảnh báo. |
 | Robot rời dock bị báo chặn sau ~10 s | Robot quay đầu/khởi động lâu: tăng `nomoveSec`. |
-| Robot dừng gần nhưng hay báo bị chặn | Tăng `arriveCm` (vd. 60) hoặc lấy lại toạ độ. |
-| Robot đi sai chỗ | Bản đồ Valetudo đã tạo lại → lấy lại toạ độ (bước 2), khoá bản đồ. |
+| Robot dừng gần nhưng hay phải thử lại | Tăng `arriveCm` (vd. 60), hoặc định vị lại bằng **Dùng vị trí robot** đúng chỗ robot dừng được. |
+| Robot đi sai chỗ / cảnh báo vàng "bản đồ có thể đã vẽ lại" | Bản đồ Valetudo đã tạo lại → định vị lại các điểm (bước 2), bật persistent map. |
 | Robot đổi hướng chậm ~2 s | Bình thường: adapter dừng robot rồi mới gửi đích mới, để chạy được trên mọi model. |
+
+## 6. Checklist đầu ca
+
+- Robot online trên màn trạm, pin ≥ 80 %, không cảnh báo.
+- Trang Cấu hình không có cảnh báo vàng về bản đồ.
+- Chạy thử một chuyến: bếp giao 1 bàn gần → robot tới, về dock.
+- Lối đi chính không có ghế kéo ra, thùng, dây điện; thảm/ngưỡng cửa robot qua được.
+- Một người biết nút dừng vật lý trên robot và nút **DỪNG** trên màn robot.
+- Sau khi đổi sơ đồ bàn: **Tải xuống JSON** để sao lưu.
+
+## 7. Thực hành tốt với robot giao đồ ăn
+
+- Dạy điểm bằng **vị trí robot thật**, không chấm ước lượng; điểm dừng cạnh bàn trên lối đi, không chắn lối người.
+- Trong Valetudo: vẽ **no-go area / virtual wall** quanh bếp nóng, cầu thang, chỗ để thùng; đặt tên phòng (hiện trên bản đồ trạm); tắt mọi lịch dọn tự động; tháo khăn lau; IP tĩnh cho robot và điện thoại.
+- Món lỏng: lót chống trượt, không đầy quá 80 %; robot hút bụi tăng/giảm tốc gắt, đây là giới hạn phần cứng.
+- Giờ cao điểm: ưu tiên **GẤP** cho món nóng; orchestrator xếp hàng robot tại bếp.
+- Bị chắn: để robot tự xin đường và thử lại; chỉ can thiệp khi có cảnh báo trạm. Xem KPI "can thiệp" cuối ca: lối nào hay kẹt thì dời điểm dừng hoặc bàn.
+- Phần mềm không phải hệ an toàn: luôn có người bấm được nút dừng vật lý.

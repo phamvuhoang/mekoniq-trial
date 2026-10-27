@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds dist/robot-nodered.tar.gz: flows, settings, UI, MP3s + Termux installer + Valetudo runbook.
-# Runtime state (data/context, .config.*) is NOT shipped.
+# Runtime state (data/context, .config.*) is NOT shipped; data/site.json is the empty seed (the demo is site.demo.json, web only).
 set -e
 cd "$(dirname "$0")/.."
 mkdir -p dist
