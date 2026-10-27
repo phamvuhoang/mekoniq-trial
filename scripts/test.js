@@ -1,6 +1,6 @@
 // Scenario test for orchestrator + simulator with a fake clock: node scripts/test.js
 const assert = require('assert');
-const O = require('../data/lib/orchestrator'), S = require('../data/lib/simulator'), site = require('../data/site.json');
+const O = require('../data/lib/orchestrator'), S = require('../data/lib/simulator'), site = require("../data/site.demo.json");
 
 let now = 1e12;
 const st = O.init(site, now), sim = S.init(site);
