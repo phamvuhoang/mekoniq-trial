@@ -20,7 +20,7 @@ Cài lại sẽ ghi đè `~/robot/site.json`; bản cũ (nếu đã cấu hình 
 
 ## 1. Valetudo → MQTT
 
-Mở Valetudo của robot (`http://192.168.0.105`) → **Connectivity → MQTT**:
+Mở Valetudo của robot (`http://<IP robot>`, xem IP trong danh sách thiết bị của router; nên đặt IP cố định cho cả robot) → **Connectivity → MQTT**:
 
 | Mục | Giá trị |
 |---|---|
