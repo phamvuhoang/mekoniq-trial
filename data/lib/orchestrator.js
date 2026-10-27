@@ -77,13 +77,14 @@ function gotoCmd(c, r) {
 }
 
 // How far a free robot is from a mission's first stop. Simulator robots: along the route network.
-// Valetudo robots: straight line in robot cm on their own map; a robot never taught one of the stops cannot take the job.
+// Valetudo robots: straight line in robot cm on their own map; a robot never taught one of the stops comes last —
+// it still takes the job when no taught robot is free, and the adapter then reports noroute (an alert), never a silent wait.
 function distanceTo(c, r, m) {
   const cfg = c.site.robots.find(x => x.id === r.id) || {};
   const first = m.stops.find(open).p;
   if (cfg.driver === 'valetudo') {
     const P = (cfg.valetudo && cfg.valetudo.points) || {};
-    if (!m.stops.filter(open).every(s => P[s.p] || s.p === r.dock)) return Infinity;
+    if (!m.stops.filter(open).every(s => P[s.p] || s.p === r.dock)) return 1e9;
     return r.pos && P[first] ? Math.hypot(r.pos.x - P[first].x, r.pos.y - P[first].y) : 0;
   }
   return c.st.map.nodes[first] ? Math.min(R.distance(c.st.map, r.x, r.y, first), 1e9) : 0;   // closed lanes: still assign, the robot reports noroute
@@ -123,7 +124,7 @@ function assign(c) {
   const queue = c.st.missions.filter(m => m.status === 'queued').sort((a, b) => (b.urgent - a.urgent) || (a.createdAt - b.createdAt));
   for (const m of queue) {
     const free = Object.values(c.st.robots).filter(r => !r.mission && !r.halt && !r.offline && !r.charging &&
-      (m.robotPref === 'any' || m.robotPref === r.id) && distanceTo(c, r, m) < Infinity);
+      (m.robotPref === 'any' || m.robotPref === r.id));
     if (!free.length) continue;
     const far = r => distanceTo(c, r, m);
     const r = free.reduce((a, b) => (far(a) <= far(b) ? a : b));

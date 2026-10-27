@@ -335,16 +335,15 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.deepStrictEqual(status('idle').events, [{ event: 'arrived', robot: 'R1', token: 1 }]);
   console.log('✓ wait / retry / blocked / self-clear');
 
-  // acceptCm: after the tries are used up, stopping within 80 cm counts as arrived (0 = off)
-  fresh(); goto('T01', 2); now += 2000; farStop();
-  for (let i = 1; i <= 4; i++) { now += 15000; tick(); }
+  // acceptCm: stopped short at the same spot retryMax times (chair over the stop) -> within 80 cm counts as arrived (0 = off)
+  const shortStops = (n) => { for (let i = 0; i < n; i++) { status('moving'); now += 3000; pos(1500, 1850); status('idle'); now += 5000; tick(); now += 15000; tick(); } };
+  fresh(); goto('T01', 2); now += 2000; shortStops(4);
   assert.strictEqual(st.robots.R1.tries, 4);
-  status('moving'); now += 3000; pos(1500, 1850); status('idle'); now += 5000; r = tick();   // 5 s grace for a fresh position
+  status('moving'); now += 3000; pos(1500, 1850); status('idle'); now += 5000; r = tick();
   assert.deepStrictEqual(r.events.filter(e => e.event === 'arrived'), [{ event: 'arrived', robot: 'R1', token: 2 }]);
   assert.ok(logs(r).some(x => /coi là đã tới/.test(x)));
   const OFF = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, acceptCm: 0 } }, SITE.robots[1]] };
-  fresh(OFF); goto('T01', 3); now += 2000; farStop();
-  for (let i = 1; i <= 4; i++) { now += 15000; tick(); }
+  fresh(OFF); goto('T01', 3); now += 2000; shortStops(4);
   status('moving'); now += 3000; pos(1500, 1850); status('idle'); now += 5000; r = tick();
   assert.deepStrictEqual(r.events.filter(e => e.event === 'arrived'), []);
   assert.strictEqual(tel().nav, 'wait');
@@ -388,6 +387,34 @@ const PTS = SITE.robots[0].valetudo.points;
   fresh(); goto('T01', 11); now += 2000; status('moving'); now += 3000; pos(3000, 3000); status('idle'); now += 5000; r = tick();
   assert.ok(logs(r).some(x => /dừng ở 3000,3000/.test(x) && /status=idle/.test(x)), JSON.stringify(logs(r)));
   console.log('✓ new goal / paused / trip-end log');
+
+  // Review fix 1: a config save mid-trip (knob / point taught -> adapter rebuild) must not drop the trip
+  fresh(); goto('T01', 30); now += 2000; status('moving');
+  const taught = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, points: { ...PTS, T02: { x: 500, y: 500 } } } }, SITE.robots[1]] };
+  site = taught;
+  assert.strictEqual(tel().nav, 'moving');
+  now += 3000; pos(1455, 1850);
+  assert.deepStrictEqual(status('idle').events.filter(e => e.event === 'arrived'), [{ event: 'arrived', robot: 'R1', token: 30 }]);
+  // the goal's own coordinates re-taught mid-trip -> resent
+  fresh(); goto('T01', 31); now += 2000; status('moving');
+  site = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, points: { ...PTS, T01: { x: 1600, y: 1850 } } } }, SITE.robots[1]] };
+  r = tick();
+  assert.deepStrictEqual(r.mqtt, [{ topic: OP, payload: 'STOP' }]);   // stop, then the new coordinates once idle
+  assert.deepStrictEqual(status('idle').mqtt, [{ topic: GO, payload: '{"coordinates":{"x":1600,"y":1850}}' }]);
+  // paused survives too
+  fresh(); goto('T01', 32); now += 2000; status('moving'); H({ cmd: 'stop', robot: 'R1' });
+  site = taught; now += 20000;
+  assert.deepStrictEqual(tick().mqtt, []); assert.strictEqual(st.robots.R1.paused, true);
+  console.log('✓ rebuild keeps the trip');
+
+  // Review fix 3: short stops with real progress in between are not "4 tries at the same spot"
+  fresh(); pos(100, 1850); goto('T01', 40); now += 2000;
+  for (let i = 1; i <= 6; i++) {   // each stop is 200 cm further along, still short of T01 (1450)
+    status('moving'); now += 3000; pos(100 + 200 * i, 1850); status('idle'); now += 5000; tick();
+    assert.strictEqual(tel().blocked, false, 'stop ' + i);
+    now += 15000; tick();   // retry
+  }
+  console.log('✓ progress between stops resets the tries');
 }
 
 {

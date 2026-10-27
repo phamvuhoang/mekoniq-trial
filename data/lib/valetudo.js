@@ -88,8 +88,10 @@ const BOOT = Date.now() + Math.random();
 const ours = r => r.driver === 'valetudo' && !!r.valetudo && typeof r.valetudo.topic === 'string' && !!r.valetudo.topic;
 const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id, r.dock, r.valetudo]));   // topic or a knob edited -> rebuild
 
-// What the robot has told us: survives a rebuild (knob / points edited) as long as the topic is the same robot.
+// What the robot has told us, and the trip in progress: both survive a rebuild (knob / point edited in setup.html,
+// which happens during service) as long as the topic is the same robot. A rebuild only swaps the knobs.
 const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'mapMeta'];
+const TRIP = ['goal', 'pending', 'pendingSince', 'sentAt', 'seenMoving', 'checkUntil', 'paused', 'blocked', 'why', 'waiting', 'tries', 'retryAt', 'lastPos', 'progressAt', 'waitPos'];
 function init(site, old) {
   const st = { key: robotsKey(site), boot: BOOT, robots: {} };
   for (const r of site.robots) {
@@ -102,9 +104,17 @@ function init(site, old) {
       progressCm: knob(r, 'progressCm', 15), acceptCm: knob(r, 'acceptCm', 80), retryRe,
       status: null, err: null, errRetry: false, battery: null, pos: null, online: false,
       goal: null, pending: false, pendingSince: 0, sentAt: 0, seenMoving: false, checkUntil: 0,
-      paused: false, blocked: false, why: null, waiting: false, tries: 0, retryAt: 0, lastPos: null, progressAt: 0, ...calib(site, r) };
+      paused: false, blocked: false, why: null, waiting: false, tries: 0, retryAt: 0, lastPos: null, progressAt: 0, waitPos: null, ...calib(site, r) };
     const prev = old && old.robots && old.robots[r.id];
-    if (prev && prev.topic === b.topic) for (const k of INGESTED) if (prev[k] !== undefined) b[k] = prev[k];
+    if (prev && prev.topic === b.topic) {
+      for (const k of INGESTED.concat(TRIP)) if (prev[k] !== undefined) b[k] = prev[k];
+      if (b.goal && !b.goal.home) {   // the goal's point may have been re-taught: drive to the new spot
+        const c = b.points[b.goal.to] || null, was = b.goal.coords;
+        b.goal.coords = c;
+        if (!c) { b.blocked = true; b.why = 'noroute'; b.waiting = false; }
+        else if (!was || was.x !== c.x || was.y !== c.y) b.retaught = true;
+      }
+    }
   }
   return st;
 }
@@ -124,7 +134,7 @@ function send(b, now) {
 const near = (b) => { const d = dist(b); return d !== null && d <= b.arriveCm; };
 function arrive(id, b, events) {
   events.push({ event: 'arrived', robot: id, token: b.goal.token });
-  Object.assign(b, { goal: null, blocked: false, why: null, checkUntil: 0, waiting: false, tries: 0, retryAt: 0 });
+  Object.assign(b, { goal: null, blocked: false, why: null, checkUntil: 0, waiting: false, tries: 0, retryAt: 0, waitPos: null });
 }
 // Hard stop: a fault only a person fixes (wheel, lifted, bin…) or the retries are used up. Stays until resume / clear /
 // the fault clears — or, when still 'waiting', the slow retry gets the robot moving again.
@@ -133,6 +143,9 @@ const block = (b) => { b.blocked = true; b.why = 'object'; b.checkUntil = 0; };
 // (nav 'wait') and the trip is resent after retrySec; after retryMax tries it is reported blocked and retried slowly.
 function wait(id, b, now, events, why) {
   if (b.waiting) return;
+  // Got well past the last place it waited: a fresh blockage, not the same one — the tries start over.
+  if (b.waitPos && b.pos && Math.hypot(b.pos.x - b.waitPos.x, b.pos.y - b.waitPos.y) > Math.max(100, 2 * b.arriveCm)) b.tries = 0;
+  b.waitPos = b.pos && { x: b.pos.x, y: b.pos.y };
   b.waiting = true; b.why = 'object'; b.checkUntil = 0; b.retryAt = now + b.retryMs;
   const d = dist(b);
   say(events, id, `chuyến tới ${b.goal.to} ${why} ở ${where(b)}${d !== null ? ` (cách ${Math.round(d)} cm)` : ''}, status=${b.status}, lỗi=${b.err || '-'}`);
@@ -145,7 +158,8 @@ function check(id, b, now, events) {
 // Stopped short of the goal, no fault: close enough after the tries are used up, else wait and retry.
 function stopped(id, b, now, events) {
   const d = dist(b);
-  if (b.tries >= b.retryMax && b.acceptCm > 0 && d !== null && d <= b.acceptCm) {
+  const samePlace = !b.waitPos || !b.pos || Math.hypot(b.pos.x - b.waitPos.x, b.pos.y - b.waitPos.y) <= Math.max(100, 2 * b.arriveCm);
+  if (samePlace && b.tries >= b.retryMax && b.acceptCm > 0 && d !== null && d <= b.acceptCm) {
     say(events, id, `dừng cách ${b.goal.to} ~${Math.round(d)} cm sau ${b.tries} lần thử — coi là đã tới`);
     return arrive(id, b, events);
   }
@@ -172,14 +186,18 @@ function start(id, b, now, events, mqtt) {
 }
 // Progress watchdog bookkeeping: remember when the robot last moved more than progressCm.
 const progress = (b, now) => { if (b.pos && (!b.lastPos || Math.hypot(b.pos.x - b.lastPos.x, b.pos.y - b.lastPos.y) > b.progressCm)) { b.lastPos = { x: b.pos.x, y: b.pos.y }; b.progressAt = now; } };
-const restart = (b) => { b.blocked = false; b.why = null; b.waiting = false; b.tries = 0; b.retryAt = 0; };
+const restart = (b) => { b.blocked = false; b.why = null; b.waiting = false; b.tries = 0; b.retryAt = 0; b.waitPos = null; };
 
 // input: orchestrator cmd | {cmd:'tick'} | {cmd:'mqtt', topic, payload} | {cmd:'link', up}.
 // Returns {events, mqtt, maps}; maps[robotId] = compact map when one arrived in this call (kept out of st: it is big).
 function handle(st, site, input, now) {
-  if (st.key !== robotsKey(site)) { const fresh = init(site, st); for (const k of Object.keys(st)) delete st[k]; Object.assign(st, fresh); }   // config edited
+  const events = [], mqtt = [], maps = {}, id = input.robot;
+  if (st.key !== robotsKey(site)) {   // config edited
+    const fresh = init(site, st); for (const k of Object.keys(st)) delete st[k]; Object.assign(st, fresh);
+    for (const [rid, r] of Object.entries(st.robots)) if (r.retaught) { delete r.retaught; if (!r.paused && !r.pending && r.why !== 'noroute') { r.waiting = false; start(rid, r, now, events, mqtt); } }
+  }
   if (st.boot !== BOOT) { st.boot = BOOT; for (const r of Object.values(st.robots)) r.online = false; }
-  const events = [], mqtt = [], maps = {}, id = input.robot, b = st.robots[id];
+  const b = st.robots[id];
   switch (input.cmd) {
     case 'goto': {
       if (!b) break;

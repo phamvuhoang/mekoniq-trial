@@ -94,7 +94,7 @@ function floorSVG(click) {
   let h = `<rect x="0" y="0" width="${S.floor.w}" height="${S.floor.h}" rx=".4" fill="none" stroke="var(--line)" stroke-width=".1"/>`;
   for (const [id, p] of Object.entries(P)) {
     const f = a => (click ? ` data-f="${a}"` : '');
-    if (p.kind === 'table') h += `<g${f('t:' + id)}><rect class="tbl" id="pt-${id}" x="${p.x - .9}" y="${p.y - .65}" width="1.8" height="1.3" rx=".25"/><text x="${p.x}" y="${p.y}">${short(id)}</text></g>`;
+    if (p.kind === 'table') h += `<g${f('t:' + id)}><rect class="tbl" id="pt-${id}" x="${p.x - .9}" y="${p.y - .65}" width="1.8" height="1.3" rx=".25"/><text x="${p.x}" y="${p.y}">${esc(short(id))}</text></g>`;
     else if (p.kind === 'dock') h += `<rect class="zone dock" x="${p.x - .6}" y="${p.y - .5}" width="1.2" height="1" rx=".2"/><text class="zl" x="${p.x}" y="${p.y - .1}">⚡${esc(p.name.replace(/\D/g, ''))}</text>`;
     else h += `<g${f((p.kind === 'station' ? 'from:' : 'to:') + id)}><rect class="zone ${p.kind}" x="${p.x - 2.4}" y="${p.y - 1.6}" width="4.8" height="3.2" rx=".4"/><text x="${p.x - .4}" y="${p.y}">${esc(p.name)}</text></g>`;
   }

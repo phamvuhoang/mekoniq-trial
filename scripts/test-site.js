@@ -67,3 +67,14 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   assert.strictEqual(S.RETRY_ERR, 'unreach|target|navigat|path');
   console.log('✓ nextTable / KNOBS');
 }
+{
+  // review fix 5: a site.json from the previous version (site.valetudo.points) migrates into the first Valetudo robot
+  const old = clone(seed); old.points.T01 = { name: 'Bàn 01', kind: 'table' };
+  old.robots[0].valetudo = { topic: 'valetudo/Old', arriveCm: 40 };
+  old.valetudo = { points: { kitchen: { x: 2351, y: 2544 }, T01: { x: 1890, y: 1420 }, ZZ: { x: 1, y: 1 } } };
+  const r = S.normalize(old, seed);
+  assert.deepStrictEqual(r.errors, []);
+  assert.deepStrictEqual(r.site.robots[0].valetudo.points, { kitchen: { x: 2351, y: 2544 }, T01: { x: 1890, y: 1420 } });
+  assert.strictEqual(r.site.valetudo, undefined);
+  console.log('✓ migrates old site.valetudo.points');
+}

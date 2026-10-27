@@ -56,8 +56,13 @@ function normalize(input, seed) {
       if (!['deliver', 'bus', 'summon'].includes(r.tab)) r.tab = 'deliver'; }
   });
 
-  // robots
+  // robots. A site from the previous version kept the coordinates in site.valetudo.points: move them into the first robot.
   site.robots = Array.isArray(site.robots) ? site.robots : [];
+  if (site.valetudo && site.valetudo.points) {
+    const first = site.robots.find(r => r && r.driver === 'valetudo');
+    if (first) { first.valetudo = first.valetudo || {}; first.valetudo.points = { ...site.valetudo.points, ...(first.valetudo.points || {}) }; }
+    delete site.valetudo;
+  }
   const seenR = new Set();
   site.robots.forEach((r, i) => {
     if (!r || !ID.test(String(r.id))) { errors.push(`Robot #${i + 1}: id không hợp lệ`); return; }

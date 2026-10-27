@@ -346,6 +346,14 @@ scenario('chuyển xử lý thủ công', () => {
   O.handle(st5, two, { source: 'adapter', data: { event: 'telemetry', robots: [tel('R1'), tel('R2')] } }, now);
   O.handle(st5, two, { source: 'ui', data: { by: 't', type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T01'], robot: 'any' } }, now);
   assert.strictEqual(st5.missions[0].robot, 'R1', 'R2 is nearer but was never taught T01');
+  // review fix 2: a table no robot was taught still gets a robot, which then reports noroute (alert) — never waits silently
+  const one = clone(seed); one.points.T01 = { name: 'Bàn 01', kind: 'table' };
+  one.robots[0].valetudo = { topic: 'a', points: { kitchen: { x: 1, y: 1 } } };
+  const st6 = O.init(one, now);
+  O.handle(st6, one, { source: 'adapter', data: { event: 'telemetry', robots: [tel('R1')] } }, now);
+  const r6 = O.handle(st6, one, { source: 'ui', data: { by: 't', type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T01'], robot: 'any' } }, now);
+  assert.strictEqual(st6.missions[0].robot, 'R1');
+  assert.ok(r6.cmds.some(c => c.cmd === 'goto' && c.robot === 'R1'));
   console.log('✓ seed site / robots removed / nearest-by-cm assignment');
 }
 

@@ -8,7 +8,8 @@ APP="$HOME/robot"
 ENV="$APP/.env"
 
 # Stop a running copy first so the update is picked up.
-pkill -f "start-nodered" 2>/dev/null || true
+pkill -f "start-nodered" 2>/dev/null || [ -n "$OLD_SITE" ] && echo "⚠️ Cấu hình cũ đã lưu ở ~/robot/site.json.old — mở http://$IP:$P/setup.html → Sao lưu → Nhập JSON (chọn tệp đó, cần chép sang Downloads: cp ~/robot/site.json.old ~/storage/downloads/) → Lưu"
+true
 pkill -f "node-red -u $APP" 2>/dev/null || true
 pkill -x mosquitto 2>/dev/null || true   # restarted by the boot script with the new mosquitto.conf
 
@@ -25,6 +26,10 @@ command -v mosquitto >/dev/null || pkg install -y -o Dpkg::Options::=--force-con
 mkdir -p "$APP"
 # The live config (points, robots, roles) is kept by Node-RED in $APP/context/ (edited on setup.html) and is not
 # in the bundle, so reinstalling never loses it. data/site.json in the bundle is only the empty seed.
+# Upgrade from the version that kept the config in site.json: keep that file so it can be imported on setup.html.
+if [ -f "$APP/site.json" ] && grep -q '"driver"' "$APP/site.json" && [ ! -f "$APP/context/global/global.json" ]; then
+  cp "$APP/site.json" "$APP/site.json.old" && OLD_SITE=1
+fi
 cp -r "$HERE/data/." "$APP/"
 # MQTT: the robot connects over the Wi-Fi on :1883 with a password (anyone on the Wi-Fi could drive it otherwise);
 # Node-RED uses an on-device-only listener on :1884 without login. Password made once, kept across reinstalls.

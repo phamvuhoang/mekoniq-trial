@@ -136,7 +136,7 @@ function view(r, m) {
       <p class="sub">${esc(m.label)}</p><div class="cards">${trayList(m, x => x.a === 'handoff')}${note(m)}</div>
       ${tiles(tile('confirm', '🚀', 'Đã xếp xong · Đi giao'), armTile('cm', 'cancel', '✕', 'Huỷ nhiệm vụ', 'Chạm lần nữa để huỷ', 'red'))}` };
     if (s.a === 'return') return { bar: `${place} · Trả đồ bị huỷ`, tone: 'warn', body: `${face('wait')}<h1>Trả lại đồ bị huỷ</h1>
-      <div class="cards">${s.trays.map(t => `<div class="item"><span class="ic">↩️</span><span class="grow"><span class="q">Khay ${t.tray}</span> · Bàn ${short(t.table)}</span></div>`).join('')}</div>
+      <div class="cards">${s.trays.map(t => `<div class="item"><span class="ic">↩️</span><span class="grow"><span class="q">Khay ${t.tray}</span> · Bàn ${esc(short(t.table))}</span></div>`).join('')}</div>
       ${tiles(tile('confirm', '✅', 'Đã nhận lại đồ'))}` };
     if (s.a === 'collect') return { bar: `${place} · Thu dọn bàn`, tone: 'ok', body: `${face('happy')}<h1>Mời đặt chén đĩa lên khay</h1>
       <p class="sub">Robot sẽ mang về ${esc(pname(App.site.dishPoint))}.</p>

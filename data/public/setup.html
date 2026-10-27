@@ -276,11 +276,12 @@ $('download').onclick = () => {
 };
 $('upload').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
+  if (f.size > SiteLib.MAX_BYTES) { msg('Tệp quá lớn (> 512 KB)', 'err'); e.target.value = ''; return; }
   try {
     const parsed = JSON.parse(await f.text());
-    const { errors } = SiteLib.normalize(parsed, App.site);
+    const { site: norm, errors } = SiteLib.normalize(parsed, App.site);
     if (errors.length) return msg('Tệp không hợp lệ: ' + errors.join('; '), 'err');
-    D = parsed; D.rev = App.site.rev; setDirty(true); render(); msg('Đã nạp tệp — bấm Lưu để áp dụng', 'ok');
+    D = norm; D.rev = App.site.rev; setDirty(true); render(); msg('Đã nạp tệp — bấm Lưu để áp dụng', 'ok');
   } catch (err) { msg('Tệp không đọc được (không phải JSON)', 'err'); }
   e.target.value = '';
 };
@@ -299,7 +300,8 @@ $('tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { ta
 connect(m => {
   if (m.type === 'site') {
     if (!D || !dirty) load();
-    else if (saving) { saving = false; load(); msg('Đã lưu', 'ok'); toast('Đã lưu cấu hình', 'ok'); }
+    else if (saving && m.site.rev === D.rev + 1) { saving = false; load(); msg('Đã lưu', 'ok'); toast('Đã lưu cấu hình', 'ok'); }   // our save, acknowledged
+    else if (saving) { saving = false; setDirty(true); msg('Chưa lưu — cấu hình trên máy chủ vừa đổi (mất kết nối hoặc máy khác lưu). Tải lại rồi sửa lại.', 'err'); $('stale').hidden = false; }
     else $('stale').hidden = false;
     if (!robotId && curRobot()) robotId = curRobot().id;
     if (!vm && typeof VMap === 'function') { vm = VMap($('vmap'), { onTap: (x, y, hitId) => { if (hitId && !sel) { sel = hitId; renderPoints(); } else if (sel) setXY(x, y); } }); pollMap(); setInterval(pollMap, 10000); }

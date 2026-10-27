@@ -16,7 +16,8 @@ Script cài thêm Mosquitto (broker MQTT) và in ra `MQTT broker cho Valetudo : 
 Robot vào cổng 1883 **có mật khẩu** (không có thì ai cùng Wi-Fi nhà hàng cũng điều khiển được robot); Node-RED dùng cổng 1884 chỉ trong máy.
 Mật khẩu tạo một lần, giữ qua các lần cài lại: `cat ~/robot/.mqtt-pass`.
 Đặt **IP cố định** cho điện thoại trên router (DHCP reservation) trước bước 1 — Valetudo lưu IP này, đổi IP là robot mất kết nối.
-Cấu hình (bàn, trạm, điểm dừng, topic, núm chỉnh) nằm trong `~/robot/context/` của Node-RED, **cài lại không mất**. Trước khi cài lại nên bấm **Tải xuống JSON** trong trang Cấu hình để có bản sao.
+Cấu hình (bàn, trạm, điểm dừng, topic, núm chỉnh) nằm trong `~/robot/context/` của Node-RED, **cài lại không mất**.
+Nâng cấp từ bản cũ (cấu hình trong `site.json`): script giữ lại `~/robot/site.json.old`; chép sang Downloads (`termux-setup-storage` rồi `cp ~/robot/site.json.old ~/storage/downloads/`) → setup.html → Sao lưu → **Nhập JSON** → Lưu. Toạ độ cũ tự chuyển vào robot R1. Trước khi cài lại nên bấm **Tải xuống JSON** trong trang Cấu hình để có bản sao.
 
 ## 1. Valetudo → MQTT
 
