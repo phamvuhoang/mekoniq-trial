@@ -349,4 +349,17 @@ scenario('chuyển xử lý thủ công', () => {
   console.log('✓ seed site / robots removed / nearest-by-cm assignment');
 }
 
+// ---- Task 4: points without a route node are Valetudo-only ----
+{
+  const RT = require('../data/lib/route');
+  const seed = require('../data/site.json');
+  const s13 = JSON.parse(JSON.stringify(site)); s13.points.T13 = { name: 'Bàn 13', kind: 'table' };
+  const cleaned = RT.clean({ nodes: site.map.nodes, edges: site.map.edges }, s13);
+  assert.ok(cleaned && cleaned.nodes.T01, 'clean keeps working with a node-less point');
+  assert.ok(!RT.unreachable(site.map, s13).includes('T13'));
+  assert.deepStrictEqual(S.init(seed).robots, {});
+  assert.deepStrictEqual(Object.keys(S.init(site).robots), ['R1', 'R2', 'R3']);
+  console.log('✓ route/simulator ignore points without a node');
+}
+
 console.log('OK — all scenarios pass');

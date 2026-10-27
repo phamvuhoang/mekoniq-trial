@@ -22,7 +22,8 @@ function init(site) {
   const sim = { ver: 2, last: 0, robots: {}, map: site.map, mapV: 0, obstacles: [], obSeq: 0, locks: {} };
   for (const { id, dock, driver } of site.robots) {
     if (driver && driver !== 'sim') continue;   // driven by another adapter (lib/valetudo.js)
-    const p = site.map.nodes[dock];
+    const p = site.map && site.map.nodes[dock];
+    if (!p) continue;   // dock not on the route network (Valetudo-only site)
     sim.robots[id] = { x: p.x, y: p.y, dock, battery: 100, goal: null, path: [], prev: dock, nav: 'idle', why: null,
       waitSince: 0, avoid: [], stopped: false, offline: false, mv: false };
   }
