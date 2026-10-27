@@ -59,7 +59,7 @@ nano ~/robot/site.json
 
 ```json
 "robots": [
-  { "id": "R1", "dock": "D1", "driver": "valetudo", "valetudo": { "topic": "valetudo/InsecureYellowishGoldfish", "arriveCm": 40 } }
+  { "id": "R1", "dock": "D1", "driver": "valetudo", "valetudo": { "topic": "valetudo/InsecureYellowishGoldfish", "arriveCm": 40, "nomoveSec": 10, "tripSec": 180 } }
 ],
 "valetudo": {
   "points": {
@@ -71,7 +71,10 @@ nano ~/robot/site.json
 ```
 
 - Bỏ R2/R3 (robot giả lập) trong buổi thử, nếu không chúng sẽ "cướp" lệnh giao `robot: any`. Muốn giữ thì trên màn trạm chọn đích danh R1.
-- `arriveCm`: robot dừng cách điểm ≤ bấy nhiêu cm thì coi là đã tới (mặc định 40).
+- Các núm chỉnh (sửa số trên máy rồi `pkill -f node-red`, không cần đóng gói lại):
+  - `arriveCm`: robot dừng cách điểm ≤ bấy nhiêu cm thì coi là đã tới (mặc định 40).
+  - `nomoveSec`: sau lệnh mà chừng ấy giây robot chưa báo `moving` → xét theo vị trí, thường là "bị chặn" (mặc định 10). Robot quay đầu lâu khi rời dock → tăng lên 20–30.
+  - `tripSec`: một chuyến chạy quá chừng ấy giây → "bị chặn" (mặc định 180).
 - Bản đồ trên màn hình được căn theo ≥ 2 điểm có trong `valetudo.points` — vị trí robot trên UI chỉ để xem, sai vài chục cm là bình thường.
 - Với **2 điểm**, sơ đồ sàn trong `site.json` phải **cùng chiều** với bản đồ Valetudo (không lật gương); nếu chấm robot trên UI chạy ngược chiều, khai thêm điểm thứ 3 — adapter sẽ tự nhận ra bản đồ bị lật. Việc robot chạy tới đúng điểm không phụ thuộc vào chuyện này.
 - Thiếu khối `"valetudo": { "topic": … }` ở robot có `"driver": "valetudo"` → robot bị bỏ qua (UI báo mất kết nối), log Node-RED có dòng `[valetudo] R1: thiếu …`.
@@ -83,6 +86,12 @@ pkill -f node-red
 ```
 
 ## 4. Kiểm tra theo bậc — hỏng bậc nào dừng ở bậc đó
+
+a0. **Broker trong máy chạy** (Termux chưa được thử trước — làm bậc này đầu tiên):
+```sh
+mosquitto_sub -p 1884 -t '#' -C 1 -W 5 -v; echo "exit=$?"
+```
+`Timed out` / `exit=27` (hết 5 s, không có tin) là broker **đang chạy** nhưng chưa có robot. Lỗi kết nối (`Connection refused`, `Bad file descriptor`…) là broker không lên → `tail -30 ~/robot/mosquitto.log`.
 
 a. **MQTT thông** — trên Termux:
 ```sh
@@ -112,6 +121,8 @@ e. **Dừng / chạy tiếp / dừng khẩn** khi robot đang chạy: robot ph�
 | "R1 mất kết nối" | Robot báo `$state lost` hoặc chưa gửi gì: kiểm tra bậc 4a, IP điện thoại, robot còn bật Wi-Fi. |
 | "R1 không có lộ trình tới …" | Điểm đó chưa có trong `valetudo.points` (hoặc sai tên id). Thêm toạ độ, `pkill -f node-red`. |
 | "R1 bị chặn … cần nhân viên" | Robot dừng xa điểm đích hơn `arriveCm`, Valetudo báo lỗi (kẹt bánh, nhấc lên…), robot không nhúc nhích 10 s sau lệnh (từ chối lệnh), hoặc một chuyến chạy quá 3 phút. Đã bị chặn thì robot tự đứng yên/hết lỗi cũng **không** tính là đã tới. Dọn lối rồi bấm **Đã dọn lối đi** (màn trạm hoặc màn robot) → adapter gửi lại lệnh tới điểm cũ. Lỗi Valetudo (kẹt bánh…) phải xử lý tại robot; hết lỗi là tự hết cảnh báo. |
+| "R1 bị chặn" khi robot đang ở dock, chưa giao việc | Valetudo báo lỗi không liên quan di chuyển (hộp rác chưa lắp, cảm biến bẩn…) — xem lỗi trên Valetudo, xử lý tại robot; hết lỗi là hết cảnh báo. |
+| Robot rời dock bị báo chặn sau ~10 s | Robot quay đầu/khởi động lâu: tăng `nomoveSec`. |
 | Robot dừng gần nhưng hay báo bị chặn | Tăng `arriveCm` (vd. 60) hoặc lấy lại toạ độ. |
 | Robot đi sai chỗ | Bản đồ Valetudo đã tạo lại → lấy lại toạ độ (bước 2), khoá bản đồ. |
 | Robot đổi hướng chậm ~2 s | Bình thường: adapter dừng robot rồi mới gửi đích mới, để chạy được trên mọi model. |

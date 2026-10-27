@@ -43,6 +43,7 @@ allow_anonymous true
 listener 1883 0.0.0.0
 allow_anonymous false
 password_file $APP/mosquitto.passwd
+log_dest file $APP/mosquitto.log
 CONF
 
 # Editor (/admin) password: asked once, stored as a bcrypt hash. UI pages stay open to tablets on the Wi-Fi.

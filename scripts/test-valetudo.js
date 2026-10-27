@@ -280,3 +280,24 @@ const SITE = {
   assert.deepStrictEqual(V.toSite(V.fit(pairs.concat([{ site: { x: 14.5, y: 8 }, robot: { x: 1800, y: 1550 } }])), { x: 1000 + 120, y: 3000 - 750 }), { x: 7.5, y: 1.2 });   // not mirrored stays so
   console.log('✓ config / parse robustness, mirrored map');
 }
+
+{
+  // per-robot knobs in site.json: valetudo.nomoveSec / tripSec (like arriveCm)
+  const K = { ...SITE, robots: [{ ...SITE.robots[0], valetudo: { topic: 'valetudo/Bot', nomoveSec: 20, tripSec: 60 } }] };
+  let now = 1e12; const st = V.init(K);
+  const H = (i) => V.handle(st, K, i, now), tel = () => H({ cmd: 'tick' }).events[0].robots[0];
+  const status = (s) => H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: s });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' }); status('docked');
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '90' });
+  H({ cmd: 'goto', robot: 'R1', to: 'kitchen', token: 1 });
+  now += 15000; assert.strictEqual(tel().blocked, false);   // default 10 s would have blocked
+  now += 5000; assert.strictEqual(tel().blocked, true);
+  H({ cmd: 'sim', robot: 'R1', fault: 'clear' }); status('moving');
+  now += 59000; assert.strictEqual(tel().blocked, false);
+  now += 1000; assert.strictEqual(tel().blocked, true);
+  // knob edited on the device + restart: saved state picks up the new value
+  const K2 = { ...K, robots: [{ ...K.robots[0], valetudo: { ...K.robots[0].valetudo, arriveCm: 80 } }] };
+  V.handle(st, K2, { cmd: 'tick' }, now);
+  assert.strictEqual(st.robots.R1.arriveCm, 80);
+  console.log('✓ nomoveSec / tripSec knobs');
+}

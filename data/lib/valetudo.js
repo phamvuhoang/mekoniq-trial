@@ -10,10 +10,10 @@ const zlib = require('zlib');
 // Robot cm -> site m (for the UI only) is a similarity transform (mirrored if that fits better, >= 3 points)
 // fitted on the points known in both.
 // Trip end = a stopped status after 'moving' was seen: near the goal (or no position known) -> arrived, else blocked.
-// Never seen moving 10 s after the command (rejected, or a trip inside the 1.5 s stale window) -> judged by position.
-// Blocked stays blocked until resume / "Đã dọn lối đi"; any trip still running after 3 min -> blocked.
+// Never seen moving nomoveSec (10 s) after the command (rejected, or a trip inside the 1.5 s stale window) -> judged by position.
+// Blocked stays blocked until resume / "Đã dọn lối đi"; any trip still running after tripSec (3 min) -> blocked.
 // New goal while moving -> STOP, wait for a stopped status (max 3 s), then send: not every model accepts go/set mid-trip.
-// ponytail: no path/rem/reroute/obstacles (Valetudo does not report them); one goal at a time; TRIP_MS is fixed.
+// ponytail: no path/rem/reroute/obstacles (Valetudo does not report them); one goal at a time.
 
 // Least-squares 2-D similarity robot(cm) -> site(m): X = a*x - b*y + tx, Y = b*x + a*y + ty (y negated first when
 // T.m, i.e. the Valetudo map is mirrored). Two points cannot tell a mirror apart, so it is only tried from 3. null if < 2.
@@ -66,21 +66,24 @@ function parseMap(payload) {
 }
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
-const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000, NOMOVE_MS = 10000, TRIP_MS = 180000;
-const arriveCm = (site, r) => (r.valetudo && r.valetudo.arriveCm) ?? 40;
+const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000;
+// Per-robot knobs in site.json robots[].valetudo: arriveCm, nomoveSec (no 'moving' after a command), tripSec.
+const knob = (r, k, d) => (r.valetudo && Number.isFinite(r.valetudo[k]) ? r.valetudo[k] : d);
+const arriveCm = (site, r) => knob(r, 'arriveCm', 40);
 
 // Saved state outlives the process (flow context on disk): after a restart nothing is "online" until the
 // broker (re)delivers $state, so a robot that went away meanwhile shows up as offline.
 const BOOT = Date.now() + Math.random();
 const ours = r => r.driver === 'valetudo' && !!r.valetudo && typeof r.valetudo.topic === 'string' && !!r.valetudo.topic;
-const robotsKey = site => site.robots.filter(ours).map(r => r.id + '@' + r.valetudo.topic).join();
+const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id, r.dock, r.valetudo]));   // topic or a knob edited -> rebuild
 
 function init(site) {
   const st = { key: robotsKey(site), boot: BOOT, robots: {} };
   for (const r of site.robots) {
     if (r.driver !== 'valetudo') continue;
     if (!ours(r)) { console.warn(`[valetudo] ${r.id}: thiếu "valetudo": { "topic": "<prefix>/<identifier>" } trong site.json — bỏ qua robot này`); continue; }
-    st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r), status: null, err: null,
+    st.robots[r.id] = { topic: r.valetudo.topic, dock: r.dock, arriveCm: arriveCm(site, r),
+      nomoveMs: knob(r, 'nomoveSec', 10) * 1000, tripMs: knob(r, 'tripSec', 180) * 1000, status: null, err: null,
       battery: null, pos: null, online: false, goal: null, pending: false, pendingSince: 0, sentAt: 0, seenMoving: false, checkUntil: 0,
       paused: false, blocked: false, why: null };
   }
@@ -162,8 +165,8 @@ function handle(st, site, input, now) {
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
         if (!r.goal || r.paused || r.blocked || r.pending) continue;
         if (r.checkUntil) { if (now >= r.checkUntil) check(rid, r, now, events); }
-        else if (!r.seenMoving && STOPPED.includes(r.status) && now - r.sentAt >= NOMOVE_MS) end(rid, r, now, events, false);
-        else if (now - r.sentAt >= TRIP_MS) block(r);
+        else if (!r.seenMoving && STOPPED.includes(r.status) && now - r.sentAt >= r.nomoveMs) end(rid, r, now, events, false);
+        else if (now - r.sentAt >= r.tripMs) block(r);
       }
       events.push(telemetry(st, site));
       break;
