@@ -1,4 +1,5 @@
 'use strict';
+const zlib = require('zlib');
 // MEKONIQ Serve S1 — Robot Adapter (VALETUDO). Same contract as lib/simulator.js, for a robot vacuum running
 // Valetudo, spoken to over MQTT (<topic> = robots[].valetudo.topic, e.g. valetudo/InsecureYellowishGoldfish):
 //   publish   <topic>/GoToLocationCapability/go/set      {"coordinates":{"x":cm,"y":cm}}
@@ -34,6 +35,15 @@ function calib(site) {
   const points = (site.valetudo && site.valetudo.points) || {};
   const pairs = Object.keys(points).filter(id => site.points[id]).map(id => ({ site: site.points[id], robot: points[id] }));
   return { T: fit(pairs), points };
+}
+
+// Robot position {x, y, angle} (cm) from a MapData/map-data payload, or null if it is not one we can read.
+function parseMap(payload) {
+  try {
+    const m = JSON.parse(zlib.inflateSync(Buffer.from(payload)));
+    const e = m.entities.find(e => e.type === 'robot_position');
+    return { x: e.points[0], y: e.points[1], angle: (e.metaData && e.metaData.angle) ?? null };
+  } catch (e) { return null; }
 }
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
@@ -104,6 +114,7 @@ function ingest(st, input, now, events, mqtt) {
     else if (key === 'StatusStateAttribute/flag') b.flag = v;
     else if (key === 'StatusStateAttribute/error_description') b.err = v && v !== 'No error' ? v : null;
     else if (key === 'BatteryStateAttribute/level') b.battery = +v;
+    else if (key === 'MapData/map-data') b.pos = parseMap(input.payload) || b.pos;
     else if (key === 'StatusStateAttribute/status') {
       b.status = v;
       if (!b.goal || b.paused || b.why === 'noroute' || !STOPPED.includes(v)) continue;
@@ -127,4 +138,4 @@ function telemetry(st, site) {
   return { event: 'telemetry', robots };
 }
 
-module.exports = { fit, toSite, calib, init, handle, arriveCm };
+module.exports = { fit, toSite, calib, init, handle, arriveCm, parseMap };

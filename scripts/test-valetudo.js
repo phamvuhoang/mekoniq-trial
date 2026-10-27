@@ -141,3 +141,19 @@ const SITE = {
   assert.strictEqual(tel().why, 'object');
   console.log('✓ trip end / blocked / redirect');
 }
+
+{
+  const zlib = require('zlib');
+  const map = { entities: [{ type: 'charger_location', points: [1, 2] }, { type: 'robot_position', points: [1455, 1848], metaData: { angle: 90 } }] };
+  assert.deepStrictEqual(V.parseMap(zlib.deflateSync(JSON.stringify(map))), { x: 1455, y: 1848, angle: 90 });
+  assert.strictEqual(V.parseMap(Buffer.from('not zlib')), null);
+  assert.strictEqual(V.parseMap(zlib.deflateSync('{"entities":[]}')), null);
+  assert.strictEqual(V.parseMap(zlib.deflateSync('not json')), null);
+  // through handle: pos updated, bad payload keeps the old pos
+  const st = V.init(SITE), topic = 'valetudo/Bot/MapData/map-data';
+  V.handle(st, SITE, { cmd: 'mqtt', topic, payload: zlib.deflateSync(JSON.stringify(map)) }, 0);
+  assert.deepStrictEqual(st.robots.R1.pos, { x: 1455, y: 1848, angle: 90 });
+  V.handle(st, SITE, { cmd: 'mqtt', topic, payload: Buffer.from('garbage') }, 0);
+  assert.deepStrictEqual(st.robots.R1.pos, { x: 1455, y: 1848, angle: 90 });
+  console.log('✓ map-data position');
+}
