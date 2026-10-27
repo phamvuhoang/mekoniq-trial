@@ -33,7 +33,8 @@
     <div class="flow"><span>Tablet trạm / robot / QR bàn</span>→<span>Mission Orchestrator</span>→<span>Robot Adapter (simulator / Valetudo)</span>→<span>Robot + Safety layer</span>→<span>Telemetry · KPI</span></div></div>
   <div class="card"><p class="eyebrow">Máy trạm (nhân viên)</p><div class="grid" id="stations"></div>
     <p class="small muted">Mỗi máy nhớ vai trò của mình. Có thể mở nhiều máy cùng vai trò (VD 2 tablet bếp).</p></div>
-  <div class="card"><p class="eyebrow">Lộ trình robot</p><div class="grid"><a class="tile" href="map.html" target="_blank"><b>✏️ Thiết kế lộ trình</b><span>Lối đi, lối hẹp, một chiều, vùng đi chậm, đóng lối</span></a></div></div>
+  <div class="card"><p class="eyebrow">Cấu hình</p><div class="grid"><a class="tile" href="setup.html" target="_blank"><b>⚙️ Cấu hình</b><span>Bàn, trạm, điểm dừng trên bản đồ robot, vai trò, thời gian, sao lưu</span></a>
+    <a class="tile" href="map.html" target="_blank" id="mapTile" hidden><b>✏️ Thiết kế lộ trình</b><span>Lối đi, lối hẹp, một chiều, vùng đi chậm, đóng lối (robot giả lập)</span></a></div></div>
   <div class="card"><p class="eyebrow">Màn hình trên robot</p><div class="grid" id="robots"></div></div>
   <div class="card"><p class="eyebrow">Khách hàng · QR tại bàn</p><div class="tgrid" id="tables"></div></div>
 </main>
@@ -44,6 +45,7 @@ const DESC = { bep: 'Giao món ra bàn, gọi robot về bếp', bar: 'Giao đ�
 connect(m => {
   if (m.type !== 'site') return;
   const S = App.site;
+  document.getElementById('mapTile').hidden = !hasSim();
   document.getElementById('stations').innerHTML = S.roles.map(r =>
     `<a class="tile" href="station.html?role=${r.id}" target="_blank"><b>${esc(r.name)}</b><span>${DESC[r.id] || ''}</span></a>`).join('');
   document.getElementById('robots').innerHTML = S.robots.map(r =>

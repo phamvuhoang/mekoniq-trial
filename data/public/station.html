@@ -150,7 +150,8 @@
   <section class="stack" style="grid-column:1/-1">
     <div class="card"><p class="eyebrow">Sơ đồ nhà hàng · lối đi của robot</p>
       <div class="maptools"><div class="seg" id="mode"></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sm" data-act="obClear">Gỡ hết vật cản</button><a class="btn sm" href="map.html" target="_blank">✏️ Thiết kế lộ trình ↗</a></div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="simTools"><button class="btn sm" data-act="obClear">Gỡ hết vật cản</button><a class="btn sm" href="map.html" target="_blank">✏️ Thiết kế lộ trình ↗</a></div>
+        <a class="btn sm" href="setup.html" target="_blank">⚙️ Cấu hình ↗</a></div>
       <svg id="map" class="floor" role="img" aria-label="Sơ đồ nhà hàng, lối đi và vị trí robot"></svg>
       <div id="legend"></div><p class="hint" id="modeHint"></p></div>
     <div class="two">
@@ -369,6 +370,8 @@ function buildMap() {
 }
 function renderMap() {
   if (!App.site) return;
+  $('simTools').hidden = !hasSim();
+  if (!hasSim()) return;   // Valetudo-only site: no hand-drawn floor plan (robot map comes in Task 12)
   if (!mapBuilt) buildMap();
   if (App.map && App.map.v !== netV) { netV = App.map.v; $('net').innerHTML = netSVG(App.map); }
   const sel = new Set(F.tab === 'deliver' ? F.tables : F.tab === 'bus' ? [F.table] : [F.to]);

@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="vi"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MEKONIQ Serve · Cấu hình</title>
+<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand.css">
+<style>
+  /* Manager's config page: every operational setting, saved live to the orchestrator (no site.json editing). */
+  .wrap { max-width: 1400px; margin: auto; padding: 12px 16px 80px; display: grid; gap: 14px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .layout { display: grid; gap: 14px; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); align-items: start; }
+  @media (max-width: 960px) { .layout { grid-template-columns: 1fr; } }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: 0; }
+  .row.sel { background: color-mix(in srgb, var(--mint) 25%, transparent); border-radius: 10px; padding: 8px; }
+  .row .main { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+  .row input[type=text] { width: 160px; }
+  input[type=number] { width: 84px; border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 10px; }
+  select { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 10px; }
+  .id { font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted); }
+  .grp { margin-top: 14px; }
+  .grp h4 { margin: 0 0 4px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .knob { display: grid; grid-template-columns: 1fr 100px; gap: 8px; align-items: center; padding: 6px 0; }
+  .knob small { display: block; color: var(--muted); font-size: 12px; }
+  .err { color: var(--danger); font-weight: 800; font-size: 13px; white-space: pre-wrap; }
+  .ok { color: var(--green); font-weight: 800; font-size: 13px; }
+  .stale { background: #ffe4cc; border: 1px solid #ffbf8a; border-radius: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-weight: 700; }
+  .mapbox { position: relative; }
+  .mapbox canvas { width: 100%; height: auto; display: block; border-radius: 12px; background: #f3f6f8; touch-action: manipulation; }
+  .mapbox .warnmap { position: absolute; left: 10px; top: 10px; right: 10px; background: #ffe4cc; border: 1px solid #ffbf8a; border-radius: 10px; padding: 8px 10px; font-weight: 800; font-size: 13px; }
+  .pttools { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .arrows { display: grid; grid-template-columns: repeat(3, 40px); gap: 4px; }
+  .arrows button { min-height: 36px; padding: 0; }
+  .muted { color: var(--muted); }
+  #saveMsg { min-height: 20px; }
+</style>
+</head><body>
+<header class="top"><div class="nav">
+  <div id="brand"></div>
+  <div class="navright">
+    <span class="pill" id="rev">…</span>
+    <button class="btn sm" id="revert" disabled>Huỷ thay đổi</button>
+    <button class="btn sm primary" id="save" disabled>Lưu</button>
+    <span class="dot" id="conn" title="Kết nối hệ thống"></span>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <div id="saveMsg"></div>
+  <div class="stale" id="stale" hidden><span>Máy khác vừa lưu cấu hình — bản anh/chị đang sửa đã cũ.</span><button class="btn sm" id="reload">Tải lại bản mới (bỏ thay đổi ở đây)</button></div>
+  <div class="tabs seg" id="tabs"></div>
+  <section id="tab-points" class="layout" hidden>
+    <div class="card">
+      <p class="eyebrow">Bản đồ robot <span id="robotPick" class="seg" style="display:inline-flex;margin-left:8px"></span></p>
+      <div class="mapbox"><canvas id="vmap" width="1000" height="700"></canvas><div class="warnmap" id="mapWarn" hidden></div></div>
+      <p class="hint small muted" id="mapHint">Chọn một điểm ở danh sách bên phải rồi chạm lên bản đồ để đặt vị trí robot dừng. Chính xác nhất: lái robot tới đúng chỗ (app Valetudo hoặc bê robot tới) rồi bấm “Dùng vị trí robot”.</p>
+      <div class="pttools" id="pttools" hidden>
+        <b id="selName"></b><span class="id" id="selXY"></span>
+        <div class="arrows"><span></span><button class="btn sm" data-mv="0,-10">↑</button><span></span><button class="btn sm" data-mv="-10,0">←</button><button class="btn sm" data-mv="0,10">↓</button><button class="btn sm" data-mv="10,0">→</button></div>
+        <button class="btn sm primary" id="useRobot">📍 Dùng vị trí robot</button>
+        <button class="btn sm" id="probe">▶ Chạy thử tới đây</button>
+        <button class="btn sm warn" id="clearXY">Xoá vị trí</button>
+        <button class="btn sm" id="zoom">🔍 1×</button>
+      </div>
+    </div>
+    <div class="card"><p class="eyebrow">Điểm dừng · bàn, trạm, sạc</p><div id="points"></div>
+      <div class="pttools"><button class="btn sm primary" id="addTable">+ Thêm bàn</button><button class="btn sm" id="addStation">+ Thêm trạm</button></div></div>
+  </section>
+  <section id="tab-robots" hidden><div class="card"><p class="eyebrow">Robot</p><div id="robots"></div><div class="pttools"><button class="btn sm" id="addRobot">+ Thêm robot</button></div></div></section>
+  <section id="tab-roles" hidden class="layout">
+    <div class="card"><p class="eyebrow">Vai trò (màn hình trạm)</p><div id="roles"></div></div>
+    <div class="card"><p class="eyebrow">Thời gian & khay</p><div id="timing"></div></div>
+  </section>
+  <section id="tab-backup" hidden><div class="card"><p class="eyebrow">Sao lưu</p>
+    <p class="small" id="info"></p>
+    <div class="pttools"><button class="btn sm" id="download">⬇️ Tải xuống JSON</button>
+      <label class="btn sm">⬆️ Nhập JSON <input type="file" id="upload" accept="application/json" hidden></label>
+      <button class="btn sm warn" id="reset">Khôi phục mặc định</button></div>
+    <p class="small muted">Nhập JSON chỉ nạp vào trang này; bấm <b>Lưu</b> mới có hiệu lực. Khôi phục mặc định bị từ chối khi còn lệnh đang chạy.</p></div></section>
+</main>
+<div id="offline" hidden>Mất kết nối tới hệ thống điều phối — đang kết nối lại…</div>
+
+<script>window.module = { exports: {} };</script><script src="lib/site.js"></script><script>const SiteLib = module.exports;</script>
+<script src="transport.js"></script><script src="common.js"></script><script src="vmap.js"></script>
+<script>
+document.getElementById('brand').innerHTML = BRAND('Serve S1 · Cấu hình');
+const $ = id => document.getElementById(id);
+let BY = 'Quản lý ca';
+try { const s = JSON.parse(localStorage.getItem('mekoniq.station')); if (s && s.name) BY = s.name; } catch (e) {}
+const clone = o => JSON.parse(JSON.stringify(o));
+const KIND_VI = { table: 'Bàn', station: 'Trạm', dish: 'Rửa chén', dock: 'Sạc' };
+const HINT = {
+  arriveCm: 'Dừng cách điểm ≤ bấy nhiêu cm thì coi là đã tới', nomoveSec: 'Sau lệnh mà chừng ấy giây robot chưa chạy → xét theo vị trí (rời dock chậm: tăng lên 20–30)',
+  tripSec: 'Một chuyến chạy quá chừng ấy giây → bị chặn (lưới cuối)', retrySec: 'Bị chắn: thử đi tiếp sau bấy nhiêu giây', retryMax: 'Thử bấy nhiêu lần rồi mới báo trạm',
+  stuckSec: 'Đang chạy mà đứng yên bấy nhiêu giây → coi là bị chắn', progressCm: 'Nhúc nhích ít hơn bấy nhiêu cm = đứng yên', acceptCm: 'Sau khi thử hết, dừng cách đích ≤ bấy nhiêu cm vẫn coi là đã tới (0 = tắt)',
+};
+
+// D = the draft being edited; it reaches the orchestrator on Lưu. dirty = differs from App.site.
+let D = null, dirty = false, saving = false, tab = new URLSearchParams(location.search).get('tab') || 'points', sel = null, robotId = null;
+const TABS = { points: '📍 Điểm & bản đồ', robots: '🤖 Robot', roles: '👥 Vai trò & thời gian', backup: '💾 Sao lưu' };
+const valRobots = () => D.robots.filter(r => r.driver === 'valetudo');
+const curRobot = () => valRobots().find(r => r.id === robotId) || valRobots()[0] || null;
+
+function setDirty(v) {
+  dirty = v;
+  $('save').disabled = !dirty || saving; $('revert').disabled = !dirty;
+  $('save').textContent = saving ? 'Đang lưu…' : 'Lưu';
+}
+function msg(text, cls) { $('saveMsg').innerHTML = text ? `<span class="${cls}">${esc(text)}</span>` : ''; }
+function load() { D = clone(App.site); setDirty(false); $('stale').hidden = true; sel = null; render(); }
+
+function render() {
+  if (!D) return;
+  $('rev').textContent = 'Bản ' + (App.site.rev || 0);
+  $('tabs').innerHTML = Object.entries(TABS).map(([k, t]) => `<button data-tab="${k}" aria-pressed="${tab === k}">${t}</button>`).join('');
+  for (const k of Object.keys(TABS)) $('tab-' + k).hidden = tab !== k;
+  if (tab === 'points') renderPoints();
+  if (tab === 'robots') renderRobots();
+  if (tab === 'roles') renderRoles();
+  if (tab === 'backup') renderBackup();
+}
+
+// ---- Points ----
+function renderPoints() {
+  const groups = [['station', 'Trạm'], ['dish', 'Khu rửa chén'], ['dock', 'Trạm sạc'], ['table', 'Bàn']];
+  const R = valRobots(), r = curRobot();
+  $('robotPick').innerHTML = R.length > 1 ? R.map(x => `<button data-robot="${x.id}" aria-pressed="${r && r.id === x.id}">${x.id}</button>`).join('') : '';
+  let h = '';
+  for (const [kind, title] of groups) {
+    const ids = Object.keys(D.points).filter(k => D.points[k].kind === kind).sort();
+    if (!ids.length && kind !== 'table') continue;
+    h += `<div class="grp"><h4>${title}</h4>` + (ids.length ? ids.map(id => {
+      const p = D.points[id], pt = r && r.valetudo.points[id];
+      const where = kind === 'dock' ? '<span class="pill">⚡ lấy từ robot</span>' : !r ? '' : pt ? `<span class="pill ok">● ${pt.x}, ${pt.y}</span>` : '<span class="pill warn">○ chưa định vị</span>';
+      return `<div class="row ${sel === id ? 'sel' : ''}" data-pt="${id}"><div class="main"><input type="text" value="${esc(p.name)}" data-name="${id}" aria-label="Tên"><span class="id">${id}</span>${where}</div>
+        <button class="btn sm ${isArmed('del-' + id) ? 'armed' : ''}" data-del="${id}" ${['dish'].includes(kind) ? 'disabled' : ''}>${isArmed('del-' + id) ? 'Xoá?' : 'Xoá'}</button></div>`;
+    }).join('') : '<p class="small muted" style="margin:0">Chưa có bàn nào — bấm “+ Thêm bàn”.</p>') + '</div>';
+  }
+  setHTML($('points'), h);
+  drawMap();
+}
+
+$('points').addEventListener('input', e => { const id = e.target.dataset.name; if (id) { D.points[id].name = e.target.value; setDirty(true); } });
+$('points').addEventListener('click', e => {
+  const del = e.target.closest('[data-del]');
+  if (del) { armed('del-' + del.dataset.del, () => { const id = del.dataset.del; delete D.points[id]; for (const r of valRobots()) delete r.valetudo.points[id]; if (sel === id) sel = null; setDirty(true); render(); }, render); return; }
+  if (e.target.tagName === 'INPUT') return;
+  const row = e.target.closest('[data-pt]');
+  if (row) { sel = sel === row.dataset.pt ? null : row.dataset.pt; renderPoints(); }
+});
+$('robotPick').onclick = e => { const b = e.target.closest('[data-robot]'); if (b) { robotId = b.dataset.robot; renderPoints(); } };
+$('addTable').onclick = () => { const t = SiteLib.nextTable(D); D.points[t.id] = { name: t.name, kind: 'table' }; sel = t.id; setDirty(true); render(); };
+$('addStation').onclick = () => {
+  const id = prompt('Mã trạm (chữ/số, ví dụ bar2):'); if (!id) return;
+  if (!SiteLib.ID.test(id) || D.points[id]) return toast('Mã không hợp lệ hoặc đã có', 'warn');
+  const name = prompt('Tên trạm:', id) || id;
+  D.points[id] = { name, kind: 'station' }; sel = id; setDirty(true); render();
+};
+
+// ---- Map (Task 11: canvas, teach by robot position, probe) ----
+let vm = null, mapT = 0, zoom = 1, lastMap = null;
+function drawMap() {
+  const r = curRobot();
+  $('pttools').hidden = !(sel && r && D.points[sel] && D.points[sel].kind !== 'dock');
+  if (sel && r) {
+    const pt = r.valetudo.points[sel];
+    $('selName').textContent = D.points[sel] ? D.points[sel].name : '';
+    $('selXY').textContent = pt ? `x ${pt.x} · y ${pt.y} cm` : 'chưa định vị — chạm lên bản đồ';
+    const live = App.state && App.state.robots.find(x => x.id === r.id);
+    $('useRobot').disabled = !(live && live.pos);
+    $('probe').disabled = !(pt && live && robotStatus(live)[0] === 'Sẵn sàng');
+  }
+  if (!vm || !r) return;
+  const live = App.state && App.state.robots.find(x => x.id === r.id);
+  const points = {};
+  for (const [id, p] of Object.entries(D.points)) if (r.valetudo.points[id]) points[id] = { ...r.valetudo.points[id], name: p.name, kind: p.kind, sel: sel === id };
+  vm.setZoom(zoom, sel && points[sel] ? points[sel] : live && live.pos);
+  vm.draw({ points, robots: live && live.pos ? [{ id: r.id, ...live.pos, tone: robotStatus(live)[1], ring: live.halt === 'blocked' || live.nav === 'wait' }] : [], charger: lastMap && lastMap.charger });
+  const ref = r.valetudo.mapRef;
+  $('mapWarn').hidden = !(lastMap && ref && ref.size && (ref.size.x !== lastMap.size.x || ref.size.y !== lastMap.size.y));
+  $('mapWarn').textContent = 'Bản đồ robot có thể đã vẽ lại — kiểm tra lại các điểm';
+}
+async function pollMap() {
+  const r = curRobot();
+  if (!r) return;
+  try {
+    const res = await fetch('/api/map/' + encodeURIComponent(r.id), { cache: 'no-store' });
+    if (!res.ok) { $('mapHint').textContent = 'Chưa nhận được bản đồ từ robot ' + r.id + ' — kiểm tra MQTT và “Provide map data” trong Valetudo.'; return; }
+    const m = await res.json();
+    if (m.t !== mapT) { mapT = m.t; lastMap = m; vm.setMap(m); }
+    drawMap();
+  } catch (e) {}
+}
+function setXY(x, y) {
+  const r = curRobot(); if (!r || !sel) return;
+  r.valetudo.points[sel] = { x: Math.max(0, Math.round(x)), y: Math.max(0, Math.round(y)) };
+  setDirty(true); renderPoints();
+}
+document.querySelector('#pttools .arrows').onclick = e => {
+  const b = e.target.closest('[data-mv]'); const r = curRobot();
+  if (!b || !r || !sel || !r.valetudo.points[sel]) return;
+  const [dx, dy] = b.dataset.mv.split(',').map(Number), p = r.valetudo.points[sel];
+  setXY(p.x + dx, p.y + dy);
+};
+$('useRobot').onclick = () => { const r = curRobot(), live = App.state && App.state.robots.find(x => x.id === r.id); if (live && live.pos) setXY(live.pos.x, live.pos.y); };
+$('clearXY').onclick = () => { const r = curRobot(); if (r && sel) { delete r.valetudo.points[sel]; setDirty(true); renderPoints(); } };
+$('probe').onclick = () => { const r = curRobot(), p = r && r.valetudo.points[sel]; if (p) { send({ type: 'probe', robot: r.id, x: p.x, y: p.y, by: BY }); toast(`${r.id} chạy thử tới ${D.points[sel].name}`); } };
+$('zoom').onclick = () => { zoom = zoom === 1 ? 2 : 1; $('zoom').textContent = `🔍 ${zoom}×`; drawMap(); };
+
+// ---- Robots ----
+function renderRobots() {
+  const docks = Object.keys(D.points).filter(k => D.points[k].kind === 'dock');
+  setHTML($('robots'), D.robots.map((r, i) => `<div class="grp" data-robot-i="${i}"><h4>Robot ${esc(r.id)}</h4>
+    <div class="knob"><div>Mã robot</div><input type="text" data-k="id" value="${esc(r.id)}"></div>
+    <div class="knob"><div>Trạm sạc</div><select data-k="dock">${docks.map(d => `<option value="${d}" ${r.dock === d ? 'selected' : ''}>${esc(D.points[d].name)}</option>`).join('')}</select></div>
+    <div class="knob"><div>Loại</div><select data-k="driver"><option value="valetudo" ${r.driver === 'valetudo' ? 'selected' : ''}>Valetudo (robot thật)</option><option value="" ${r.driver !== 'valetudo' ? 'selected' : ''}>Giả lập (demo)</option></select></div>
+    ${r.driver === 'valetudo' ? `<div class="knob"><div>Topic MQTT<small>Valetudo → Connectivity → MQTT: &lt;prefix&gt;/&lt;identifier&gt;</small></div><input type="text" data-k="topic" value="${esc(r.valetudo.topic || '')}" placeholder="valetudo/TenRobot"></div>` +
+      Object.entries(SiteLib.KNOBS).map(([k, [d, lo, hi]]) => `<div class="knob"><div>${k}<small>${HINT[k]}</small></div><input type="number" data-k="${k}" min="${lo}" max="${hi}" value="${r.valetudo[k] ?? ''}" placeholder="${d}"></div>`).join('') +
+      `<div class="knob"><div>retryErr<small>Lỗi Valetudo khớp mẫu này được thử lại (regex)</small></div><input type="text" data-k="retryErr" value="${esc(r.valetudo.retryErr ?? '')}" placeholder="${SiteLib.RETRY_ERR}"></div>` : ''}
+    <div class="knob"><div></div><button class="btn sm warn ${isArmed('delr-' + i) ? 'armed' : ''}" data-delr="${i}">${isArmed('delr-' + i) ? 'Xoá?' : 'Xoá robot'}</button></div></div>`).join('') +
+    `<div class="grp"><h4>Pin</h4><div class="knob"><div>Pin yếu (%)<small>Dưới mức này: xong việc về sạc, không nhận việc</small></div><input type="number" data-t="lowBattery" value="${D.timing.lowBattery}"></div>
+     <div class="knob"><div>Pin đủ (%)<small>Từ mức này robot nhận việc lại</small></div><input type="number" data-t="chargedBattery" value="${D.timing.chargedBattery}"></div></div>`);
+}
+$('robots').addEventListener('input', e => {
+  const t = e.target, g = t.closest('[data-robot-i]');
+  if (t.dataset.t) { D.timing[t.dataset.t] = t.value; setDirty(true); return; }
+  if (!g) return;
+  const r = D.robots[+g.dataset.robotI], k = t.dataset.k;
+  if (k === 'id' || k === 'dock') r[k] = t.value.trim();
+  else if (k === 'topic' || k === 'retryErr') r.valetudo[k] = t.value;
+  else r.valetudo[k] = t.value;
+  setDirty(true);
+});
+$('robots').addEventListener('change', e => {
+  const t = e.target, g = t.closest('[data-robot-i]');
+  if (g && t.dataset.k === 'driver') { const r = D.robots[+g.dataset.robotI]; if (t.value) { r.driver = 'valetudo'; r.valetudo = r.valetudo || { topic: '', points: {} }; } else { delete r.driver; delete r.valetudo; } setDirty(true); render(); }
+  if (g && t.dataset.k === 'dock') { setDirty(true); }
+});
+$('robots').addEventListener('click', e => {
+  const b = e.target.closest('[data-delr]'); if (!b) return;
+  armed('delr-' + b.dataset.delr, () => { D.robots.splice(+b.dataset.delr, 1); setDirty(true); render(); }, render);
+});
+$('addRobot').onclick = () => {
+  let n = D.robots.length + 1; while (D.robots.some(r => r.id === 'R' + n)) n++;
+  const dock = Object.keys(D.points).find(k => D.points[k].kind === 'dock');
+  D.robots.push({ id: 'R' + n, dock, driver: 'valetudo', valetudo: { topic: '', points: {} } }); setDirty(true); render();
+};
+
+// ---- Roles & timing ----
+function renderRoles() {
+  const homes = Object.keys(D.points).filter(k => ['station', 'dish'].includes(D.points[k].kind));
+  setHTML($('roles'), D.roles.map((r, i) => `<div class="row" data-role-i="${i}"><div class="main"><input type="text" data-k="name" value="${esc(r.name)}"><span class="id">${esc(r.id)}</span>
+    <select data-k="home"><option value="">— không có —</option>${homes.map(h => `<option value="${h}" ${r.home === h ? 'selected' : ''}>${esc(D.points[h].name)}</option>`).join('')}</select>
+    <select data-k="tab"><option value="deliver" ${r.tab === 'deliver' ? 'selected' : ''}>Giao món</option><option value="bus" ${r.tab === 'bus' ? 'selected' : ''}>Thu dọn</option><option value="summon" ${r.tab === 'summon' ? 'selected' : ''}>Gọi robot</option></select></div><span></span></div>`).join(''));
+  const T = { loadSec: 'Chờ xếp đồ tại trạm (s) — quá giờ huỷ lệnh', handoffSec: 'Chờ khách nhận món (s) — quá giờ mang về', remindSec: 'Nhắc khách mỗi (s)', standbySec: 'Robot được gọi tới chờ tối đa (s)' };
+  setHTML($('timing'), Object.entries(T).map(([k, t]) => `<div class="knob"><div>${t}</div><input type="number" data-t="${k}" value="${D.timing[k]}"></div>`).join('') +
+    `<div class="knob"><div>Số khay trên robot</div><input type="number" data-trays="1" min="1" max="8" value="${D.trays}"></div>`);
+}
+$('tab-roles').addEventListener('input', e => {
+  const t = e.target, g = t.closest('[data-role-i]');
+  if (t.dataset.t) D.timing[t.dataset.t] = t.value;
+  else if (t.dataset.trays) D.trays = t.value;
+  else if (g) D.roles[+g.dataset.roleI][t.dataset.k] = t.value || null;
+  setDirty(true);
+});
+
+// ---- Backup ----
+function renderBackup() {
+  const lastLog = App.state && App.state.log.find(l => /cấu hình/.test(l.text));
+  $('info').textContent = `Đang chạy bản ${App.site.rev || 0}` + (lastLog ? ` · ${lastLog.text} lúc ${clock(lastLog.t)}` : ' · chưa chỉnh sửa (dữ liệu mặc định)');
+}
+$('download').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(App.site, null, 2)], { type: 'application/json' }));
+  a.download = `site-${(App.site.name || 'mekoniq').replace(/[^\w-]+/g, '_')}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$('upload').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const parsed = JSON.parse(await f.text());
+    const { errors } = SiteLib.normalize(parsed, App.site);
+    if (errors.length) return msg('Tệp không hợp lệ: ' + errors.join('; '), 'err');
+    D = parsed; D.rev = App.site.rev; setDirty(true); render(); msg('Đã nạp tệp — bấm Lưu để áp dụng', 'ok');
+  } catch (err) { msg('Tệp không đọc được (không phải JSON)', 'err'); }
+  e.target.value = '';
+};
+$('reset').onclick = () => armed('reset', () => { send({ type: 'siteReset', by: BY }); saving = true; setDirty(true); }, () => { $('reset').textContent = isArmed('reset') ? 'Chạm lần nữa để khôi phục' : 'Khôi phục mặc định'; $('reset').classList.toggle('armed', isArmed('reset')); });
+
+// ---- Save / revert / tabs ----
+$('save').onclick = () => { msg(''); saving = true; setDirty(true); send({ type: 'siteSave', site: D, by: BY }); };
+$('revert').onclick = () => load();
+$('reload').onclick = () => load();
+$('tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) { tab = b.dataset.tab; history.replaceState(null, '', '?tab=' + tab); render(); } };
+
+connect(m => {
+  if (m.type === 'site') {
+    if (!D || !dirty) load();
+    else if (saving) { saving = false; load(); msg('Đã lưu', 'ok'); toast('Đã lưu cấu hình', 'ok'); }
+    else $('stale').hidden = false;
+    if (!robotId && curRobot()) robotId = curRobot().id;
+    if (!vm && typeof VMap === 'function') { vm = VMap($('vmap'), { onTap: (x, y, hitId) => { if (hitId && !sel) { sel = hitId; renderPoints(); } else if (sel) setXY(x, y); } }); pollMap(); setInterval(pollMap, 10000); }
+  }
+  if (m.type === 'event' && typeof m.text === 'string' && m.text.startsWith('Không lưu')) { saving = false; setDirty(true); msg(m.text, 'err'); }
+  if (m.type === 'state') { if (tab === 'points') drawMap(); if (tab === 'backup') renderBackup(); }
+});
+</script>
+</body></html>

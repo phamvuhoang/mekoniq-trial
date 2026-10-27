@@ -42,7 +42,9 @@ const clock = t => new Date(t).toLocaleTimeString('vi-VN', { hour: '2-digit', mi
 const ACTION_VI = { load: 'Xếp đồ lên khay', handoff: 'Giao cho khách', collect: 'Thu chén đĩa', unload: 'Dỡ chén đĩa', return: 'Trả đồ bị huỷ', standby: 'Chờ lệnh' };
 
 function missionOf(r) { return r && r.mission ? App.state.missions.find(m => m.id === r.mission) : null; }
-const etaSec = r => Math.round((r.rem || 0) / App.site.sim.speed);   // remaining route length, not straight line
+const etaSec = r => Math.round((r.rem || 0) / ((App.site.sim || {}).speed || 1));   // remaining route length, not straight line
+// Simulator robots drive on the hand-drawn floor plan (web demo); a Valetudo-only site shows the robot's own map instead.
+const hasSim = () => !!App.site && App.site.robots.some(r => !r.driver || r.driver === 'sim');
 // [text, tone] for a robot's current status.
 function robotStatus(r) {
   if (r.offline) return ['Mất kết nối', 'danger'];
