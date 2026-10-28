@@ -35,6 +35,7 @@ cp -r "$HERE/data/." "$APP/"
 MQTT_USER=valetudo
 [ -s "$APP/.mqtt-pass" ] || { head -c 64 /dev/urandom | base64 | tr -dc A-Za-z0-9 | head -c 16 > "$APP/.mqtt-pass"; chmod 600 "$APP/.mqtt-pass"; }
 MQTT_PW=$(cat "$APP/.mqtt-pass")
+rm -f "$APP/mosquitto.passwd"   # newer mosquitto_passwd refuses -c on an existing file; the secret lives in .mqtt-pass
 mosquitto_passwd -b -c "$APP/mosquitto.passwd" "$MQTT_USER" "$MQTT_PW"
 chmod 600 "$APP/mosquitto.passwd"
 # per_listener_settings: deprecated in Mosquitto 2.1 (warning only), still what 2.0.x needs.
