@@ -59,8 +59,8 @@
         <button class="btn sm primary" id="useRobot">📍 Dùng vị trí robot</button>
         <button class="btn sm" id="probe">▶ Chạy thử tới đây</button>
         <button class="btn sm warn" id="clearXY">Xoá vị trí</button>
-        <button class="btn sm" id="zoom">🔍 1×</button>
       </div>
+      <div class="pttools"><button class="btn sm" id="zoom">🔍 1×</button><span class="muted small">Phóng to rồi chạm bản đồ để dời tâm</span></div>
     </div>
     <div class="card"><p class="eyebrow">Điểm dừng · bàn, trạm, sạc</p><div id="points"></div>
       <div class="pttools"><button class="btn sm primary" id="addTable">+ Thêm bàn</button><button class="btn sm" id="addStation">+ Thêm trạm</button></div></div>
@@ -157,7 +157,7 @@ $('addStation').onclick = () => {
 };
 
 // ---- Map (Task 11: canvas, teach by robot position, probe) ----
-let vm = null, mapT = 0, zoom = 1, lastMap = null;
+let vm = null, mapT = 0, zoom = 1, lastMap = null, tapAt = null;
 function drawMap() {
   const r = curRobot();
   $('pttools').hidden = !(sel && r && D.points[sel] && D.points[sel].kind !== 'dock');
@@ -173,7 +173,7 @@ function drawMap() {
   const live = App.state && App.state.robots.find(x => x.id === r.id);
   const points = {};
   for (const [id, p] of Object.entries(D.points)) if (r.valetudo.points[id]) points[id] = { ...r.valetudo.points[id], name: p.name, kind: p.kind, sel: sel === id };
-  vm.setZoom(zoom, sel && points[sel] ? points[sel] : live && live.pos);
+  vm.setZoom(zoom, sel && points[sel] ? points[sel] : tapAt || (live && live.pos));
   vm.draw({ points, robots: live && live.pos ? [{ id: r.id, ...live.pos, tone: robotStatus(live)[1], ring: live.halt === 'blocked' || live.nav === 'wait' }] : [], charger: lastMap && lastMap.charger });
   const ref = r.valetudo.mapRef;
   $('mapWarn').hidden = !(lastMap && ref && ref.size && (ref.size.x !== lastMap.size.x || ref.size.y !== lastMap.size.y));
@@ -204,7 +204,7 @@ document.querySelector('#pttools .arrows').onclick = e => {
 $('useRobot').onclick = () => { const r = curRobot(), live = App.state && App.state.robots.find(x => x.id === r.id); if (live && live.pos) setXY(live.pos.x, live.pos.y); };
 $('clearXY').onclick = () => { const r = curRobot(); if (r && sel) { delete r.valetudo.points[sel]; setDirty(true); renderPoints(); } };
 $('probe').onclick = () => { const r = curRobot(), p = r && r.valetudo.points[sel]; if (p) { send({ type: 'probe', robot: r.id, x: p.x, y: p.y, by: BY }); toast(`${r.id} chạy thử tới ${D.points[sel].name}`); } };
-$('zoom').onclick = () => { zoom = zoom === 1 ? 2 : 1; $('zoom').textContent = `🔍 ${zoom}×`; drawMap(); };
+$('zoom').onclick = () => { zoom = zoom % 3 + 1; $('zoom').textContent = `🔍 ${zoom}×`; drawMap(); };
 
 // ---- Robots ----
 function renderRobots() {
@@ -304,7 +304,7 @@ connect(m => {
     else if (saving) { saving = false; setDirty(true); msg('Chưa lưu — cấu hình trên máy chủ vừa đổi (mất kết nối hoặc máy khác lưu). Tải lại rồi sửa lại.', 'err'); $('stale').hidden = false; }
     else $('stale').hidden = false;
     if (!robotId && curRobot()) robotId = curRobot().id;
-    if (!vm && typeof VMap === 'function') { vm = VMap($('vmap'), { onTap: (x, y, hitId) => { if (hitId && !sel) { sel = hitId; renderPoints(); } else if (sel) setXY(x, y); } }); pollMap(); setInterval(pollMap, 10000); }
+    if (!vm && typeof VMap === 'function') { vm = VMap($('vmap'), { onTap: (x, y, hitId) => { if (hitId && !sel) { sel = hitId; renderPoints(); } else if (sel) setXY(x, y); else { tapAt = { x, y }; drawMap(); } } }); pollMap(); setInterval(pollMap, 10000); }
   }
   if (m.type === 'event' && typeof m.text === 'string' && m.text.startsWith('Không lưu')) { saving = false; setDirty(true); msg(m.text, 'err'); }
   if (m.type === 'state') { if (tab === 'points') drawMap(); if (tab === 'backup') renderBackup(); }

@@ -9,7 +9,7 @@ function VMap(canvas, opts = {}) {
   const COL = { floor: '#dfe7ec', wall: '#2d3748', bg: '#f3f6f8', text: '#0f2f26',
     seg: ['#cfe8ff', '#d9f3dc', '#fde8c8', '#ead9ff', '#ffd9e1', '#dff5f3'],
     tone: { ok: '#b9fb75', go: '#8fc7ff', warn: '#ffc46b', danger: '#ff6b6b' } };
-  let map = null, img = null, segLabels = [], zoom = 1, centre = null, last = null;
+  let map = null, img = null, segLabels = [], zoom = 1, centre = null, last = null, box = null;   // box: cm bbox of drawn pixels
   let tf = { s: 1, ox: 0, oy: 0 };   // cm -> canvas px: px = cm * s + ox
   const toPx = (x, y) => [x * tf.s + tf.ox, y * tf.s + tf.oy];
 
@@ -20,7 +20,7 @@ function VMap(canvas, opts = {}) {
     img = document.createElement('canvas'); img.width = W; img.height = H;
     const c = img.getContext('2d');
     const order = ['floor', 'segment', 'wall'];
-    let si = 0;
+    let si = 0, bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
     for (const type of order) for (const l of m.layers) {
       if (l.type !== type) continue;
       c.fillStyle = type === 'segment' ? COL.seg[si++ % COL.seg.length] : COL[type];
@@ -31,17 +31,24 @@ function VMap(canvas, opts = {}) {
         if (x < minx) minx = x; if (x + n - 1 > maxx) maxx = x + n - 1; if (y < miny) miny = y; if (y > maxy) maxy = y;
       }
       if (type === 'segment' && l.name && maxx >= minx) segLabels.push({ name: l.name, x: (minx + maxx) / 2 * m.pixelSize, y: (miny + maxy) / 2 * m.pixelSize });
+      if (maxx >= minx) { bx0 = Math.min(bx0, minx); by0 = Math.min(by0, miny); bx1 = Math.max(bx1, maxx + 1); by1 = Math.max(by1, maxy + 1); }
     }
+    // Valetudo maps carry a wide empty margin: fit the drawn area (plus 1 m), not the nominal size.
+    const pad = 100 / m.pixelSize;
+    box = bx1 > bx0 ? { x: Math.max(0, bx0 - pad) * m.pixelSize, y: Math.max(0, by0 - pad) * m.pixelSize,
+      w: (Math.min(W, bx1 + pad) - Math.max(0, bx0 - pad)) * m.pixelSize, h: (Math.min(H, by1 + pad) - Math.max(0, by0 - pad)) * m.pixelSize }
+      : { x: 0, y: 0, w: m.size.x, h: m.size.y };
     fit();
   }
   function fit() {
     if (!map) return;
-    const base = Math.min(canvas.width / map.size.x, canvas.height / map.size.y);
+    const base = Math.min(canvas.width / box.w, canvas.height / box.h);
     const s = base * zoom;
-    let ox = (canvas.width - map.size.x * s) / 2, oy = (canvas.height - map.size.y * s) / 2;
-    if (zoom > 1 && centre) {   // keep the centre of interest in the middle, within the map
+    let ox = (canvas.width - box.w * s) / 2 - box.x * s, oy = (canvas.height - box.h * s) / 2 - box.y * s;
+    if (zoom > 1 && centre) {   // keep the centre of interest in the middle, within the drawn area
       ox = canvas.width / 2 - centre.x * s; oy = canvas.height / 2 - centre.y * s;
-      ox = Math.min(0, Math.max(canvas.width - map.size.x * s, ox)); oy = Math.min(0, Math.max(canvas.height - map.size.y * s, oy));
+      ox = Math.min(-box.x * s, Math.max(canvas.width - (box.x + box.w) * s, ox));
+      oy = Math.min(-box.y * s, Math.max(canvas.height - (box.y + box.h) * s, oy));
     }
     tf = { s, ox, oy };
   }
