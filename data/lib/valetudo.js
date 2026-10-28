@@ -90,7 +90,7 @@ const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id
 
 // What the robot has told us, and the trip in progress: both survive a rebuild (knob / point edited in setup.html,
 // which happens during service) as long as the topic is the same robot. A rebuild only swaps the knobs.
-const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'mapMeta'];
+const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'stateSeen', 'mapMeta'];
 const TRIP = ['goal', 'pending', 'pendingSince', 'sentAt', 'seenMoving', 'checkUntil', 'paused', 'blocked', 'why', 'waiting', 'tries', 'retryAt', 'lastPos', 'progressAt', 'waitPos'];
 function init(site, old) {
   const st = { key: robotsKey(site), boot: BOOT, robots: {} };
@@ -268,8 +268,10 @@ function ingest(st, input, now, events, mqtt, maps) {
   for (const [id, b] of Object.entries(st.robots)) {
     if (!input.topic.startsWith(b.topic + '/')) continue;
     const key = input.topic.slice(b.topic.length + 1), v = String(input.payload);
-    if (key === '$state') b.online = v === 'ready';
-    else if (key === 'StatusStateAttribute/error_description') {
+    if (key === '$state') { b.online = v === 'ready'; b.stateSeen = true; }
+    else if (!b.stateSeen) b.online = true;   // $state is only (re)sent on connect; a robot configured after the subscription never gets it
+    if (key === '$state') continue;
+    if (key === 'StatusStateAttribute/error_description') {
       const was = b.err;
       b.err = v && v !== 'No error' ? v : null;
       b.errRetry = !!b.err && new RegExp(b.retryRe, 'i').test(b.err);

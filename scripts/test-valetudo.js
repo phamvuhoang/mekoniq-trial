@@ -486,3 +486,19 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.deepStrictEqual(H({ cmd: 'tick' }, K3).events.find(e => e.event === 'telemetry').robots, []);
   console.log('✓ knob edit keeps ingested state; topic change does not');
 }
+{
+  // $state is retained and only re-sent on (re)connect: a robot whose topic was configured after the broker
+  // subscription never sees it. Status + battery arriving is proof of life; an explicit $state still rules.
+  const st = V.init(SITE); let now = 1e12;
+  const H = (i) => V.handle(st, SITE, i, now);
+  const tel = () => H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots;
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'docked' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '100' });
+  assert.strictEqual(tel().length, 1, 'online without $state');
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'lost' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '100' });   // retained replay after LWT
+  assert.strictEqual(tel().length, 0, '$state lost sticks');
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
+  assert.strictEqual(tel().length, 1);
+  console.log('✓ online without $state; $state lost sticks');
+}
