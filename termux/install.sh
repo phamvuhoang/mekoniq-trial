@@ -9,8 +9,12 @@ ENV="$APP/.env"
 
 # Stop a running copy first so the update is picked up.
 pkill -f "start-nodered" 2>/dev/null || true
-pkill -f "node-red -u $APP" 2>/dev/null || true
+pkill -f "node-red" 2>/dev/null || true
 pkill -x mosquitto 2>/dev/null || true   # restarted by the boot script with the new mosquitto.conf
+# An old copy that survives (different cmdline) keeps :1880 and would answer the health check below with the OLD flows.
+P=${PORT:-1880}; [ -f "$APP/.env" ] && P=$(sed -n "s/^export PORT=//p" "$APP/.env"); P=${P:-1880}
+for i in $(seq 10); do curl -s -o /dev/null "http://127.0.0.1:$P/" || break; sleep 1; done
+if curl -s -o /dev/null "http://127.0.0.1:$P/"; then echo "⚠️ Cổng $P vẫn bận — dừng mọi tiến trình node"; pkill -x node 2>/dev/null || true; sleep 3; fi
 
 if ! command -v node-red >/dev/null || ! node -v >/dev/null 2>&1; then
   # Full upgrade, not just `pkg update`: a fresh nodejs on an old libc++ fails with "CANNOT LINK EXECUTABLE node".
@@ -84,7 +88,8 @@ nohup sh "$HOME/.termux/boot/start-nodered" >/dev/null 2>&1 &
 IP=$(ifconfig 2>/dev/null | awk '/inet / && $2 != "127.0.0.1" {print $2; exit}')
 IP=${IP:-<IP-Wi-Fi-của-máy>}
 # Slow phones need well over 10 s for the first start.
-OK=; for i in $(seq 60); do curl -s -o /dev/null http://127.0.0.1:$P/ && OK=1 && break; sleep 2; done
+# /api/map exists only in this version: proves the NEW flows answer, not a leftover process.
+OK=; for i in $(seq 60); do curl -s "http://127.0.0.1:$P/api/map/_" | grep -q '^{' && OK=1 && break; sleep 2; done
 if [ -n "$OK" ]; then echo "✅ Node-RED đang chạy."; else echo "⚠️ Chưa chạy sau 2 phút — xem: tail -50 ~/robot/node-red.log"; fi
 cat <<MSG
 Mở trên các tablet cùng Wi-Fi (Chrome):
