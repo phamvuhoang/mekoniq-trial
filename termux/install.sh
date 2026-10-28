@@ -8,8 +8,7 @@ APP="$HOME/robot"
 ENV="$APP/.env"
 
 # Stop a running copy first so the update is picked up.
-pkill -f "start-nodered" 2>/dev/null || [ -n "$OLD_SITE" ] && echo "⚠️ Cấu hình cũ đã lưu ở ~/robot/site.json.old — mở http://$IP:$P/setup.html → Sao lưu → Nhập JSON (chọn tệp đó, cần chép sang Downloads: cp ~/robot/site.json.old ~/storage/downloads/) → Lưu"
-true
+pkill -f "start-nodered" 2>/dev/null || true
 pkill -f "node-red -u $APP" 2>/dev/null || true
 pkill -x mosquitto 2>/dev/null || true   # restarted by the boot script with the new mosquitto.conf
 
@@ -97,4 +96,5 @@ MQTT broker cho Valetudo : $IP:1883  user: $MQTT_USER  pass: $MQTT_PW  (xem lạ
 Đặt IP cố định cho máy này trên router (DHCP reservation) trước khi khai vào Valetudo.
 Cấu hình robot Valetudo: ~/bundle/docs/valetudo-setup.md
 MSG
+[ -n "$OLD_SITE" ] && echo "⚠️ Cấu hình cũ đã lưu ở ~/robot/site.json.old — mở http://$IP:$P/setup.html → Sao lưu → Nhập JSON (chép tệp sang Downloads trước: termux-setup-storage; cp ~/robot/site.json.old ~/storage/downloads/) → Lưu"
 true
