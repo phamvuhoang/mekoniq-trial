@@ -130,7 +130,7 @@ function renderPoints() {
     if (!ids.length && kind !== 'table') continue;
     h += `<div class="grp"><h4>${title}</h4>` + (ids.length ? ids.map(id => {
       const p = D.points[id], pt = r && r.valetudo.points[id];
-      const where = kind === 'dock' ? '<span class="pill">⚡ lấy từ robot</span>' : !r ? '' : pt ? `<span class="pill ok">● ${pt.x}, ${pt.y}</span>` : '<span class="pill warn">○ chưa định vị</span>';
+      const where = kind === 'dock' ? '<span class="pill">⚡ lấy từ robot</span>' : !r ? '' : pt ? `<span class="pill ok">● ${pt.x}, ${pt.y}</span>` : '<span class="pill warn">○ chạm để định vị</span>';
       return `<div class="row ${sel === id ? 'sel' : ''}" data-pt="${id}"><div class="main"><input type="text" value="${esc(p.name)}" data-name="${id}" aria-label="Tên"><span class="id">${id}</span>${where}</div>
         <button class="btn sm ${isArmed('del-' + id) ? 'armed' : ''}" data-del="${id}" ${['dish'].includes(kind) ? 'disabled' : ''}>${isArmed('del-' + id) ? 'Xoá?' : 'Xoá'}</button></div>`;
     }).join('') : '<p class="small muted" style="margin:0">Chưa có bàn nào — bấm “+ Thêm bàn”.</p>') + '</div>';
@@ -143,8 +143,11 @@ $('points').addEventListener('input', e => { const id = e.target.dataset.name; i
 $('points').addEventListener('click', e => {
   const del = e.target.closest('[data-del]');
   if (del) { armed('del-' + del.dataset.del, () => { const id = del.dataset.del; delete D.points[id]; for (const r of valRobots()) delete r.valetudo.points[id]; if (sel === id) sel = null; setDirty(true); render(); }, render); return; }
-  if (e.target.tagName === 'INPUT') return;
   const row = e.target.closest('[data-pt]');
+  if (e.target.tagName === 'INPUT') {   // typing a name also selects the point (no re-render, so the input keeps focus)
+    if (row && sel !== row.dataset.pt) { sel = row.dataset.pt; for (const x of $('points').querySelectorAll('.row')) x.classList.toggle('sel', x.dataset.pt === sel); drawMap(); }
+    return;
+  }
   if (row) { sel = sel === row.dataset.pt ? null : row.dataset.pt; renderPoints(); }
 });
 $('robotPick').onclick = e => { const b = e.target.closest('[data-robot]'); if (b) { robotId = b.dataset.robot; renderPoints(); } };
