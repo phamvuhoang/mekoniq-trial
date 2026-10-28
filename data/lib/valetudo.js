@@ -203,12 +203,14 @@ function handle(st, site, input, now) {
       if (!b) break;
       // same destination resent (orchestrator re-syncs goals after a map change): keep driving, no STOP
       if (b.goal && b.goal.to === input.to && !b.blocked && !b.waiting) { b.goal.token = input.token; break; }
+      const enRoute = !!b.goal && !b.blocked && !b.waiting && !b.paused;   // a command is out, even if 'moving' was not reported yet
       b.goal = { to: input.to, token: input.token, home: input.to === b.dock, coords: b.points[input.to] || null };
       restart(b); b.checkUntil = 0;
       if (!b.goal.home && !b.goal.coords) { b.pending = false; b.blocked = true; b.why = 'noroute'; break; }
       if (b.paused) { b.pending = false; break; }   // paused / e-stopped: only resume may drive it
       if (b.pending) break;   // already waiting for the robot to stop: the latest goal wins
-      start(id, b, now, events, mqtt);
+      if (enRoute && !MOVING.includes(b.status)) { b.pending = true; b.pendingSince = now; mqtt.push(op(b, 'STOP')); }
+      else start(id, b, now, events, mqtt);
       break;
     }
     case 'probe':   // setup.html: check a taught point by driving there; only an idle robot with no goal, no state kept

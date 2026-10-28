@@ -502,3 +502,21 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.strictEqual(tel().length, 1);
   console.log('✓ online without $state; $state lost sticks');
 }
+{
+  // Orchestrator sends HOME and, in the same cycle, a new destination: the robot is already acting on HOME, so the
+  // second goal must STOP it first (pending), not fire go/set over a trip in progress.
+  const st = V.init(SITE); let now = 1e12;
+  const H = (i) => V.handle(st, SITE, i, now);
+  for (const [k, v] of [['$state', 'ready'], ['StatusStateAttribute/status', 'idle'], ['BatteryStateAttribute/level', '90']]) H({ cmd: 'mqtt', topic: 'valetudo/Bot/' + k, payload: v });
+  let r = H({ cmd: 'goto', robot: 'R1', to: 'D1', x: 7.5, y: 1.2, token: 1 });
+  assert.deepStrictEqual(r.mqtt.map(m => m.payload), ['HOME']);
+  r = H({ cmd: 'goto', robot: 'R1', to: 'kitchen', x: 3, y: 11.5, token: 2 });
+  assert.deepStrictEqual(r.mqtt.map(m => m.payload), ['STOP'], 'stop the HOME run before the new goal');
+  now += 200; r = H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'returning' });
+  assert.deepStrictEqual(r.mqtt, []);
+  now += 500; r = H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'idle' });
+  assert.deepStrictEqual(r.mqtt.map(m => m.topic.split('/').slice(2).join('/')), ['GoToLocationCapability/go/set']);
+  now += 4000; H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'moving' });
+  assert.strictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0].nav, 'moving');
+  console.log('✓ new goal right after a sent command stops the robot first');
+}

@@ -114,9 +114,8 @@ function finish(c, m, status) {
   log(c, m.status === 'done' ? 'ok' : 'warn', `${m.label}: ${STATUS_VI[m.status]}`, m.robot);
   const r = c.st.robots[m.robot];
   if (r && r.mission === m.id) {
-    r.mission = null;
+    r.mission = null; r.homeDue = true;   // heads home after assign(): a queued mission takes it straight on, no detour via the dock
     resolve(c, 'wait-' + r.id);
-    goTo(c, r, r.dock, 'toDock');   // assign() may still hand it a new mission on the way
   }
 }
 
@@ -452,6 +451,7 @@ function handle(st, site, input, now) {
     } else fromUI(c, d, input.session, input.seed);
   }
   assign(c);
+  for (const r of Object.values(st.robots)) if (r.homeDue) { r.homeDue = false; if (!r.mission) goTo(c, r, r.dock, 'toDock'); }
   const snap = JSON.stringify(snapshot(st));
   if (c.force || snap !== lastSnap) {
     lastSnap = snap;

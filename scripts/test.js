@@ -50,6 +50,19 @@ scenario('giao 2 bàn, khách bàn 07 huỷ khi robot tới -> mang về bếp',
   until('dock', () => R('R1').phase === 'idle' && R('R1').at === 'D1');
 });
 
+scenario('xong lệnh mà còn lệnh chờ -> đi thẳng, không ghé dock', () => {
+  send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T01'], robot: 'R2' });
+  until('load', atStop('R2', 'load'), 60); confirm('R2');
+  until('handoff', atStop('R2', 'handoff', 'T01'), 60);
+  send({ type: 'create', kind: 'summon', to: 'bar', robot: 'R2' });   // queued: R2 is busy
+  const q = last(); assert.strictEqual(q.status, 'queued');
+  const r = O.handle(st, site, { source: 'ui', data: { by: 'test', type: 'confirm', robot: 'R2', mission: R('R2').mission, stop: stopOf('R2') && M(R('R2').mission).cur } }, now);
+  const gotos = r.cmds.filter(c => c.cmd === 'goto' && c.robot === 'R2');
+  assert.deepStrictEqual(gotos.map(c => c.to), ['bar'], 'no detour via the dock: ' + JSON.stringify(gotos));
+  assert.strictEqual(R('R2').phase, 'toStop');
+  for (const cmd of r.cmds) for (const e of S.handle(sim, site, cmd, now)) pump({ source: 'adapter', data: e });
+});
+
 scenario('trạm huỷ trước khi xếp đồ -> robot về luôn', () => {
   send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T01'], robot: 'R2' });
   const id = last().id;
