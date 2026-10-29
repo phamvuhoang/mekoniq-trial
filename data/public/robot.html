@@ -185,7 +185,8 @@ $('startFace').innerHTML = face('happy');
 let pick = [];   // tables chosen while on standby at a station
 const act = (cls, vi, en, dataAct, extra = '') => `<button class="act ${cls}" data-act="${dataAct}" ${extra}>${L(vi, en)}</button>`;
 // Two-tap button: first tap arms it (label changes), second tap runs (see click handler).
-const armAct = (key, cls, [vi, en], [avi, aen], dataAct) => isArmed(key) ? act(cls + ' armed', avi, aen, dataAct) : act(cls, vi, en, dataAct);
+// Each screen has its own key so an armed button never carries over to the next screen.
+const armAct = (key, cls, [vi, en], [avi, aen], dataAct) => isArmed(key) ? act(cls + ' armed', avi, aen, dataAct, `data-arm="${key}"`) : act(cls, vi, en, dataAct, `data-arm="${key}"`);
 const info = (title, text) => `<div class="info"><b>${title}</b><span>${text}</span></div>`;
 // Two-column block: face (or tray box) | eyebrow, headline, English line, extra.
 const split = (left, eyebrow, h1, en, extra = '', cls = '') =>
@@ -223,16 +224,17 @@ function view(r, m) {
     body: split(face('sad'), 'An toàn · Safety', 'Robot đã dừng hẳn.', 'The robot has fully stopped.',
       '<p class="lead">Nhân viên kiểm tra quanh robot. Khi an toàn, nhả nút dừng và cho robot chạy tiếp.</p>'),
     acts: armAct('rs', 'danger solid', ['Nhả dừng · Chạy tiếp', 'Release · Resume'], ['Chạm lần nữa — đã kiểm tra an toàn', 'Tap again — area checked'], 'resume') };
-  const manual = armAct('man', 'danger', ['Xử lý thủ công', 'Manual handling'], ['Chạm lần nữa · chuyển thủ công', 'Tap again to confirm'], 'manual');
+  // `manual` needs a mission to hand over (orchestrator ignores it otherwise).
+  const manual = m && armAct('man', 'danger', ['Xử lý thủ công', 'Manual handling'], ['Chạm lần nữa · chuyển thủ công', 'Tap again to confirm'], 'manual');
   if (r.halt === 'blocked') {
     if (r.why === 'noroute') return { bar: 'Không có lộ trình', sub: 'No route', tone: 'warn',
       body: split(face('sad'), 'Không có lộ trình · No route', `Không có đường tới ${esc(pname(r.target))}.`, `No route to ${esc(pname(r.target))}.`,
         `<p class="lead">Quản lý định vị điểm này trong “Cấu hình”${hasSim() ? ' hoặc kiểm tra lối đi trong “Thiết kế lộ trình”' : ''}, hoặc chuyển xử lý thủ công.</p>`),
-      acts: manual };
+      acts: manual || info('Không có lộ trình', 'Mở lại lối đi trong “Thiết kế lộ trình” · Reopen a lane in Route design') };
     return { bar: 'Cần nhân viên hỗ trợ', sub: 'Staff needed', tone: 'warn',
       body: split(face('sad'), 'Lối đi bị chặn · Path blocked', 'Xin nhường đường.', 'Please make way.',
         '<p class="lead">Lối đi phía trước bị chặn và không còn đường vòng. Vui lòng dọn lối đi.</p>'),
-      acts: act('dark tall', 'Nhân viên: đã dọn lối', 'Path cleared', 'clear') + manual };
+      acts: act('dark tall', 'Nhân viên: đã dọn lối', 'Path cleared', 'clear') + (manual || '') };
   }
   if (r.nav === 'wait' && r.why !== 'robot' && !r.halt) return { bar: 'Robot đang chờ', sub: 'Waiting', tone: 'warn',
     body: split(face('wait'), 'Đang chờ · Waiting', 'Xin nhường đường.', 'Please make way.',
@@ -273,7 +275,7 @@ function view(r, m) {
       body: split(face('happy'), `${esc(place)} · Thu dọn`, 'Mời đặt chén đĩa lên khay.', 'Please place used dishes on the trays.',
         `<p class="lead">Robot sẽ mang về ${esc(pname(App.site.dishPoint))}.</p>`),
       acts: act('primary', 'Xong · Mang về khu rửa', 'Done · To the dish area', 'confirm')
-        + armAct('cm', 'outline', ['Không có gì để thu', 'Nothing to collect'], ['Chạm lần nữa: cho robot về', 'Tap again to send it back'], 'cancel') };
+        + armAct('cc', 'outline', ['Không có gì để thu', 'Nothing to collect'], ['Chạm lần nữa: cho robot về', 'Tap again to send it back'], 'cancel') };
     if (s.a === 'unload') return { bar: `${place} · Dỡ chén đĩa`, sub: 'Unload dishes', tone: 'go',
       body: split(face('happy'), esc(place), 'Dỡ chén đĩa.', 'Please unload the dishes.'),
       acts: act('primary', 'Đã dỡ xong', 'Unloaded', 'confirm') };
@@ -309,7 +311,9 @@ function view(r, m) {
         <div class="card route"><h3>Lộ trình · Route</h3>${routeList(m)}${nav ? `<p class="nav">${nav}</p>` : ''}</div></div>`,
       acts: info('Đang di chuyển', 'Robot tự dừng khi có người hoặc vật cản · Stops for people and obstacles')
         + act('outline', 'Tạm dừng', 'Pause', 'pause')
-        + armAct('cm', 'danger', ['Huỷ chuyến', 'Cancel trip'], ['Chạm lần nữa để huỷ', 'Tap again to cancel'], 'cancel') };
+        // Orchestrator ignores cancel on a loaded bus trip and never drops return/unload stops (station.html locks these too).
+        + (m.kind === 'bus' && m.loaded || ['return', 'unload'].includes(s.a) ? ''
+          : armAct('cmv', 'danger', ['Huỷ chuyến', 'Cancel trip'], ['Chạm lần nữa để huỷ', 'Tap again to cancel'], 'cancel')) };
   }
   const b = Math.round(r.battery), home = r.phase === 'toDock', dock = pname(home ? cfg().dock : r.at || cfg().dock), full = App.site.timing.chargedBattery;
   if (r.charging) return { bar: `Robot ${ID} · ${dock}`, sub: 'Battery low · Charging', tone: 'warn',
@@ -372,7 +376,7 @@ $('main').addEventListener('click', e => {
     send({ type: 'confirm', ...base, by: s.a === 'handoff' ? 'Khách ' + pname(s.p) : BY, mission: m.id, stop: m.cur });
   }
   if (a === 'cancelStop') armed('cx', () => send({ type: 'cancelStop', mission: m.id, stop: m.cur, why: 'customer', by: 'Khách ' + pname(m.stops[m.cur].p) }), render);
-  if (a === 'cancel') armed('cm', () => send({ type: 'cancel', mission: m.id, by: BY }), render);
+  if (a === 'cancel') armed(b.dataset.arm, () => send({ type: 'cancel', mission: m.id, by: BY }), render);
   if (a === 'resume') {
     if (r.halt === 'estop') armed('rs', () => send({ type: 'resume', ...base, atRobot: true }), render);
     else send({ type: 'resume', ...base });
