@@ -8,6 +8,9 @@
   html, body { height: 100%; }
   .appbar .title { flex: none; }
   .appbar .right { gap: 12px; }
+  #monLinks { display: flex; gap: 8px; }
+  /* Monitor: no role picker on the bar (room for the links); the role still applies (log name, sounds). */
+  .screen[data-v=mon] #roleSeg { display: none; }
   #roleSeg .more { padding: 8px 12px; }
   #strips { flex: none; max-height: 30vh; overflow: auto; }
 
@@ -84,7 +87,7 @@
     .appbar .title { display: none; }
     .appbar { gap: 10px; padding: 0 12px; }
     .seg.dark button { padding: 8px 10px; }
-    #snd { display: none; }
+    .screen[data-v=desk] #snd { display: none; }
     .desk { grid-template: auto minmax(0, 1fr) auto / minmax(0, 1fr); }
     .side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.3fr); gap: 8px; }
     .side > .eyebrow.sm, .robots { grid-column: 1 / 3; }
@@ -97,7 +100,7 @@
   :root[data-orient=portrait] .appbar .title { display: none; }
   :root[data-orient=portrait] .appbar { gap: 10px; padding: 0 12px; }
   :root[data-orient=portrait] .seg.dark button { padding: 8px 10px; }
-  :root[data-orient=portrait] #snd { display: none; }
+  :root[data-orient=portrait] .screen[data-v=desk] #snd { display: none; }
   :root[data-orient=portrait] .desk { grid-template: auto minmax(0, 1fr) auto / minmax(0, 1fr); }
   :root[data-orient=portrait] .side { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(0, 1.3fr); gap: 8px; }
   :root[data-orient=portrait] .side > .eyebrow.sm, :root[data-orient=portrait] .robots { grid-column: 1 / 3; }
@@ -107,59 +110,94 @@
   :root[data-orient=portrait] #pvSend { grid-column: 2; grid-row: 1 / 3; margin: 0; align-content: end; }
   :root[data-orient=portrait] #pvSend .send b { font-size: 19px; }
 
-  /* Monitor view (restyled in a later task): old layout, scrolls inside the frame. */
-  #mon { flex: 1; min-height: 0; overflow: auto; width: 100%; }
-  .layout { max-width: 1400px; margin: auto; padding: 16px; display: grid; gap: 16px; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); align-items: start; }
-  .stack { display: grid; gap: 16px; min-width: 0; }
-  .two { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; align-items: start; }
-  @media (max-width: 1100px) { .two { grid-template-columns: 1fr; } }
-  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
-  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  /* Monitor (spec 4.3): left = tools, floor map card, legend, 6 KPI tiles; right = tabbed panel (fleet / missions / log / sim). */
+  .mon { grid-template: minmax(0, 1fr) / minmax(0, 1fr) 420px; }
+  .mleft { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; }
+  .tools { flex: none; display: flex; align-items: center; gap: 12px; }
+  .tools .seg { flex-wrap: nowrap; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+  .tools .seg button { min-height: 36px; padding: 6px 14px; border: 0; font-size: 13px; font-weight: 800; white-space: nowrap; }
+  .tools .hint { flex: 1; min-width: 0; margin: 0; font-size: 12px; font-weight: 600; line-height: 1.3; color: var(--gray);
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .tools .btn { flex: none; background: var(--card); }
+  .mapcard { flex: 1; min-height: 0; display: grid; grid-template: minmax(0, 1fr) / minmax(0, 1fr); padding: 10px; }
+  #map, #vmap { width: 100%; height: 100%; min-height: 0; display: block; border-radius: 12px; }
+  #map { background: none; }
+  #legend { flex: none; }
+  #legend .legend { margin: 0; flex-wrap: nowrap; gap: 6px 16px; white-space: nowrap; overflow: hidden; font-weight: 700; }
+  #legend .legend i { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--deep); }
+  #legend .vhint { margin: 0; font-size: 12px; font-weight: 600; color: var(--gray); }
+  .ktiles { flex: none; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+  .kpi { padding: 8px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); line-height: 1.2; }
+  .kpi b { display: block; font-size: 24px; font-weight: 900; color: var(--deep); letter-spacing: -.02em; white-space: nowrap; }
+  .kpi span { display: block; font-size: 12px; font-weight: 700; color: var(--gray); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* Map */
   #map .tbl { cursor: pointer; }
   #map .tbl.busy { stroke: var(--green); stroke-width: .14; }
   #map .tbl.sel { fill: var(--deep); stroke: var(--deep); }
-  #map .tbl.sel + text { fill: #fff; }
+  #map .tbl.sel + text { fill: var(--mint); }
   #map .rb { transition: transform .5s linear; }
-  #map .rb circle { stroke: var(--deep); stroke-width: .07; }
-  #map .rb text { font-size: .34px; fill: var(--deep); }
-  #map .rb .ring { fill: none; stroke: var(--danger); stroke-width: .06; stroke-dasharray: .15 .1; }
+  #map .rb circle { stroke: var(--deep); stroke-width: .09; }
+  #map .rb text { font-size: .4px; font-weight: 900; fill: var(--deep); }
+  #map .rb .ring { fill: none; stroke: var(--danger); stroke-width: .09; }
   #map.placing { cursor: crosshair; }
   #map.placing .tbl, #map.placing g[data-f] { cursor: crosshair; }
-  .maptools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  .maptools .seg button { padding: 7px 10px; font-size: 12px; }
+
+  /* Side panel: underline tabs, body scrolls inside */
+  .panel { display: flex; flex-direction: column; min-height: 0; padding: 0; overflow: hidden; }
+  .ptabs { flex: none; display: flex; gap: 4px; padding: 0 12px; border-bottom: 1px solid var(--line); }
+  .ptabs button { flex: 1; min-height: 48px; padding: 0 6px; border: 0; border-bottom: 3px solid transparent; background: none; color: var(--gray); font-size: 14px; font-weight: 800; white-space: nowrap; }
+  .ptabs button[aria-pressed="true"] { border-bottom-color: var(--deep); color: var(--deep); }
+  .pbody { flex: 1; min-height: 0; overflow: auto; padding: 12px; }
 
   /* Missions */
   .mission { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
   .mission.urgent { border-color: var(--accent); border-width: 2px; }
   .mrow { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+  .mrow > b { font-weight: 900; color: var(--deep); }
   .stops { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
   .stop { display: inline-flex; align-items: center; gap: 4px; border-radius: 9px; padding: 3px 8px; font-size: 12px; font-weight: 700; background: var(--soft); }
-  .stop.done { background: color-mix(in srgb, var(--mint) 45%, transparent); }
-  .stop.active { background: var(--deep); color: #fff; }
-  .stop.cancelled { background: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .stop.done { background: var(--pill-ok); }
+  .stop.active { background: var(--deep); color: var(--mint); }
+  .stop.cancelled { background: var(--pill-warn); color: var(--warn-ink); }
   .stop.skipped { text-decoration: line-through; opacity: .55; }
-  .stop.manual { background: var(--danger); color: #fff; }
+  .stop.manual { background: var(--danger); color: var(--card); }
   .stop button { border: 0; background: transparent; padding: 0 2px; font-weight: 900; color: inherit; }
-  .stop button.armed { background: var(--danger); color: #fff; border-radius: 6px; padding: 0 6px; }
+  .stop button.armed { background: var(--danger); color: var(--card); border-radius: 6px; padding: 0 6px; }
   .empty { color: var(--muted); padding: 16px 0; text-align: center; }
 
   /* Fleet */
   .robot { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
+  .robot.halt { border: 2px solid var(--accent); background: color-mix(in srgb, var(--pill-warn) 35%, var(--card)); }
+  .robot .rid { display: inline-flex; align-items: center; gap: 8px; font-size: 18px; font-weight: 900; color: var(--deep); }
+  .robot .rid i { width: 12px; height: 12px; border-radius: 50%; }
   .bat { height: 6px; background: var(--soft); border-radius: 3px; overflow: hidden; margin: 8px 0; }
   .bat > div { height: 100%; background: var(--green); }
   .bat.low > div { background: var(--danger); }
   .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 
-  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
-  .kpi { background: var(--soft); border-radius: 14px; padding: 12px; }
-  .kpi b { display: block; font-size: 26px; letter-spacing: -.04em; line-height: 1.1; }
-  .kpi span { font-size: 12px; color: var(--muted); font-weight: 700; }
-  .log { max-height: 320px; overflow: auto; font-size: 13px; }
-  .log div { display: grid; grid-template-columns: 64px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); }
-  .log .warn { color: var(--warn); } .log .error { color: var(--danger); font-weight: 700; } .log .ok { color: var(--green); }
-  .simrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  /* Log: 52px time column, colour by level */
+  .logrow { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; line-height: 1.35; }
+  .logrow time { font-size: 12px; font-weight: 600; color: var(--gray); font-variant-numeric: tabular-nums; }
+  .logrow .warn { color: var(--warn-ink); } .logrow .error { color: var(--danger); font-weight: 700; } .logrow .ok { color: var(--green); }
+
+  /* Sim tab */
+  .simcap { margin: 0 0 10px; font-size: 12px; font-weight: 600; color: var(--gray); }
+  .pbody .seg { margin-bottom: 12px; }
+  .pbody .seg button { min-height: 40px; padding: 6px 16px; }
+  .simgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .simgrid button { min-height: 52px; padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 14px; background: var(--card); color: var(--deep); font-weight: 800; line-height: 1.2; }
+  .simgrid .es { border-color: var(--pill-danger); background: var(--pill-danger); color: var(--danger); }
+  .pbody .reset { width: 100%; min-height: 48px; }
+
+  @media (orientation: portrait), (max-width: 900px) {
+    .mon { grid-template: auto minmax(0, 1fr) / minmax(0, 1fr); }
+    .mapcard { flex: 0 0 auto; aspect-ratio: var(--ar, 16 / 10); max-height: 42vh; }
+    .ktiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  :root[data-orient=portrait] .mon { grid-template: auto minmax(0, 1fr) / minmax(0, 1fr); }
+  :root[data-orient=portrait] .mapcard { flex: 0 0 auto; aspect-ratio: var(--ar, 16 / 10); max-height: 42vh; }
+  :root[data-orient=portrait] .ktiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
   dialog { border: 0; border-radius: var(--radius); padding: 24px; background: var(--card); color: var(--fg); width: min(460px, calc(100vw - 32px)); }
   dialog::backdrop { background: rgba(7, 29, 33, .6); }
@@ -189,22 +227,19 @@
     </section>
   </main>
 
-  <main class="layout" id="mon" hidden>
-    <section class="stack" style="grid-column:1/-1">
-      <div class="card"><p class="eyebrow">Sơ đồ nhà hàng · lối đi của robot</p>
-        <div class="maptools"><div class="seg" id="mode"></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap" id="simTools"><button class="btn sm" data-act="obClear">Gỡ hết vật cản</button><a class="btn sm" href="map.html" target="_blank">✏️ Thiết kế lộ trình ↗</a></div>
-          <a class="btn sm" href="setup.html" target="_blank">⚙️ Cấu hình ↗</a></div>
+  <main class="mon body" id="mon" hidden>
+    <section class="mleft">
+      <div class="tools" id="tools"><div class="seg" id="mode"></div><p class="hint" id="modeHint"></p><button class="btn sm" data-act="obClear" id="obClear">Gỡ vật cản (0)</button></div>
+      <div class="card mapcard" id="mapbox">
         <svg id="map" class="floor" role="img" aria-label="Sơ đồ nhà hàng, lối đi và vị trí robot"></svg>
-        <canvas id="vmap" width="1000" height="700" hidden style="width:100%;height:auto;display:block;border-radius:12px;background:#f3f6f8"></canvas>
-        <div id="legend"></div><p class="hint" id="modeHint"></p></div>
-      <div class="two">
-        <div class="card"><p class="eyebrow">Nhiệm vụ đang chạy & hàng chờ</p><div id="missions"></div></div>
-        <div class="card"><p class="eyebrow">Đội robot</p><div id="fleet"></div></div>
+        <canvas id="vmap" hidden></canvas>
       </div>
-      <div class="card"><p class="eyebrow">Vận hành · mission log</p><div id="kpi" class="kpis"></div><div id="log" class="log"></div></div>
-      <div class="card"><p class="eyebrow">Mô phỏng sự cố (demo)</p><div id="sim" class="simrow"></div>
-        <p class="hint">Chỉ có trong bản demo simulator. Robot thật báo các sự kiện này qua Robot Adapter.</p></div>
+      <div id="legend"></div>
+      <div class="ktiles" id="kpi"></div>
+    </section>
+    <section class="card panel">
+      <nav class="ptabs" id="ptabs"></nav>
+      <div class="pbody" id="pbody"></div>
     </section>
   </main>
 
@@ -226,7 +261,9 @@ const $ = id => document.getElementById(id);
 
 // ---- App bar: role segmented (left), view segmented + sound (right) ----
 $('bar').outerHTML = APPBAR({ title: 'MEKONIQ Serve', sub: 'Điều phối · Dispatch',
-  right: `<div class="seg dark" id="views"><button data-view="desk">Điều phối</button><button data-view="mon">Giám sát</button></div><button class="lnk snd" id="snd">Bật âm thanh</button>` });
+  right: `<div class="seg dark" id="views"><button data-view="desk">Điều phối</button><button data-view="mon">Giám sát</button></div>
+    <span id="monLinks" hidden><a class="lnk" id="routeLnk" href="map.html" target="_blank" hidden>Thiết kế lộ trình ↗</a><a class="lnk" href="setup.html" target="_blank">Cấu hình ↗</a></span>
+    <button class="lnk snd" id="snd">Bật âm thanh</button>` });
 document.querySelector('.appbar .title').insertAdjacentHTML('afterend', '<div class="seg dark" id="roleSeg"></div>');
 startClock();
 
@@ -279,8 +316,10 @@ document.addEventListener('click', e => {
 function setView(v) {
   for (const x of $('views').children) x.setAttribute('aria-pressed', x.dataset.view === v);
   $('desk').hidden = $('foot').hidden = v !== 'desk';
-  $('mon').hidden = v === 'desk';
+  $('mon').hidden = $('monLinks').hidden = v === 'desk';
+  document.querySelector('.screen').dataset.v = v;
   document.querySelector('.appbar .title small').textContent = v === 'desk' ? 'Điều phối · Dispatch' : 'Giám sát · Monitor';
+  if (v === 'mon' && App.site) { render(); if (vm) vm.resize(); }   // the canvas had a 0×0 box while hidden
 }
 $('views').onclick = e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); };
 setView(['desk', 'mon'].includes(qs.get('view')) ? qs.get('view') : me && me.role === 'ql' ? 'mon' : 'desk');
@@ -408,21 +447,24 @@ $('desk').addEventListener('input', e => {
 // ---- Map ----
 // Modes: pick tables for the form, or (demo) drop a chair / a passer-by on the floor to test obstacle handling.
 let mapBuilt = false, netV = -1, MODE = 'pick';
-const MODES = { pick: ['👆 Chọn bàn', 'Chạm bàn trên sơ đồ để chọn cho nhiệm vụ.'],
-  object: ['🪑 Đặt vật cản', 'Chạm lên lối đi để đặt ghế/xe đẩy (mô phỏng). Robot dừng, xin nhường đường, chờ rồi đi vòng; không còn đường thì báo nhân viên. Chạm vật cản để gỡ.'],
-  person: ['🚶 Người đi qua', 'Chạm lên lối đi: một người đứng chắn vài giây rồi đi. Robot chỉ dừng chờ, không đổi lộ trình.'] };
+const MODES = { pick: ['Chọn bàn', 'Chạm bàn trên sơ đồ để chọn cho nhiệm vụ.'],
+  object: ['Đặt vật cản', 'Chạm lên lối đi để đặt ghế/xe đẩy (mô phỏng). Robot dừng, xin nhường đường, chờ rồi đi vòng; không còn đường thì báo nhân viên. Chạm vật cản để gỡ.'],
+  person: ['Người đi qua', 'Chạm lên lối đi: một người đứng chắn vài giây rồi đi. Robot chỉ dừng chờ, không đổi lộ trình.'] };
 function renderMode() {
   $('mode').innerHTML = Object.entries(MODES).map(([k, [t]]) => `<button data-mode="${k}" aria-pressed="${MODE === k}">${t}</button>`).join('');
-  $('modeHint').textContent = MODES[MODE][1];
+  $('modeHint').textContent = $('modeHint').title = MODES[MODE][1];
   $('map').classList.toggle('placing', MODE !== 'pick');
 }
 $('mode').addEventListener('click', e => { const b = e.target.closest('[data-mode]'); if (b) { MODE = b.dataset.mode; renderMode(); } });
 function buildMap() {
   const S = App.site;
   $('map').setAttribute('viewBox', `-.3 -.3 ${S.floor.w + .6} ${S.floor.h + .6}`);
+  $('mapbox').style.setProperty('--ar', `${S.floor.w + .6} / ${S.floor.h + .6}`);   // portrait: the card keeps the floor's aspect
   $('map').innerHTML = floorSVG(true) + `<g id="net"></g><g id="paths"></g><g id="obs"></g>` +
-    S.robots.map(r => `<g class="rb" id="rb-${r.id}"><circle r=".38" fill="#b9fb75"/><circle class="ring" r=".55" hidden/><text>${r.id}</text></g>`).join('');
-  $('legend').innerHTML = LEGEND;
+    S.robots.map(r => `<g class="rb" id="rb-${r.id}"><circle r=".5" fill="${TONE.ok}"/><circle class="ring" r=".72" hidden/><text>${r.id}</text></g>`).join('');
+  // One legend row: lane styles + robot tones.
+  $('legend').innerHTML = `<div class="legend">${[['', 'Lối đi'], ['narrow', 'Lối hẹp'], ['slow', 'Đi chậm']].map(laneKey).join('')}` +
+    [['ok', 'Rảnh'], ['go', 'Đang chạy'], ['warn', 'Đang chờ'], ['danger', 'Cần xử lý']].map(([t, l]) => `<span><i style="background:${TONE[t]}"></i>${l}</span>`).join('') + '</div>';
   renderMode();
   $('map').addEventListener('click', e => {
     if (MODE !== 'pick') {
@@ -454,9 +496,9 @@ async function pollVmap() {
 }
 function renderVmap() {
   const S = App.site;
-  $('map').style.display = 'none'; $('vmap').hidden = false; $('mode').hidden = true; $('legend').hidden = true;
-  $('modeHint').textContent = 'Bản đồ do robot tự quét. Chạm bàn để chọn cho nhiệm vụ; điểm dừng chỉnh trong “Cấu hình”.';
-  if (!vm) { vm = VMap($('vmap'), { onTap: (x, y, id) => { if (id && S.points[id] && S.points[id].kind === 'table') choose('t', id); } }); pollVmap(); setInterval(pollVmap, 10000); }
+  $('map').style.display = 'none'; $('vmap').hidden = false;
+  setHTML($('legend'), '<p class="vhint">Bản đồ do robot tự quét. Chạm bàn để chọn cho nhiệm vụ; điểm dừng chỉnh trong “Cấu hình”.</p>');
+  if (!vm) { vm = VMap($('vmap'), { onTap: (x, y, id) => { if (id && S.points[id] && S.points[id].kind === 'table') choose('t', id); } }); vm.resize(); pollVmap(); setInterval(pollVmap, 10000); }
   const r = S.robots.find(x => x.driver === 'valetudo'), P = (r && r.valetudo.points) || {};
   const sel = new Set(F.tab === 'deliver' ? F.tables : F.tab === 'bus' ? [F.table] : [F.to]);
   const points = {};
@@ -465,9 +507,10 @@ function renderVmap() {
     .map(x => ({ id: x.id, ...x.pos, tone: robotStatus(x)[1], ring: x.halt === 'blocked' || x.nav === 'wait' }));
   vm.draw({ points, robots });
 }
+addEventListener('resize', () => vm && vm.resize());
 function renderMap() {
   if (!App.site) return;
-  $('simTools').hidden = !hasSim();
+  $('tools').hidden = $('routeLnk').hidden = !hasSim();
   if (!hasSim()) return renderVmap();
   if (!mapBuilt) buildMap();
   if (App.map && App.map.v !== netV) { netV = App.map.v; $('net').innerHTML = netSVG(App.map); }
@@ -489,7 +532,9 @@ function renderMap() {
     if (r.path && r.path.length) paths += `<polyline class="path" points="${[[r.x, r.y], ...r.path].map(p => p.join(',')).join(' ')}"/>`;
   }
   setHTML($('paths'), paths);
-  setHTML($('obs'), obstacleSVG(App.state.obstacles || []));
+  const obs = App.state.obstacles || [];
+  setHTML($('obs'), obstacleSVG(obs));
+  setHTML($('obClear'), `Gỡ vật cản (${obs.length})`); $('obClear').disabled = !obs.length;
 }
 
 // ---- Missions ----
@@ -535,10 +580,10 @@ function robotHTML(r) {
   if (r.halt === 'estop') acts.push(`<span class="small">Nhả dừng tại màn hình robot</span>`);
   if (m) acts.push(`<button class="btn sm ${isArmed(k) ? 'armed' : ''}" data-act="manual" data-r="${r.id}" title="Nhân viên tự hoàn tất việc, robot về trạm">${isArmed(k) ? 'Xác nhận?' : 'Xử lý thủ công'}</button>`);
   acts.push(`<a class="btn sm" href="robot.html?robot=${r.id}" target="_blank">Màn robot ↗</a>`);
-  return `<div class="robot">
-    <div class="mrow"><b style="font-size:18px">${r.id}</b><span class="pill ${tone}">${esc(t)}</span></div>
+  return `<div class="robot ${r.halt ? 'halt' : ''}">
+    <div class="mrow"><span class="rid"><i style="background:${TONE[tone]}"></i>${r.id}</span><span class="pill ${tone}">${esc(t)}</span></div>
     <div class="bat ${bat < App.site.timing.lowBattery ? 'low' : ''}"><div style="width:${bat}%"></div></div>
-    <div class="mrow small"><span class="muted">${m ? esc(m.label) : 'Không có nhiệm vụ'}</span><span>🔋 ${bat}%${r.charging ? ' · sạc' : ''}${r.phase === 'toStop' ? ' · ~' + etaSec(r) + 's' : ''}</span></div>
+    <div class="mrow small"><span class="muted">${m ? esc(m.label) : 'Không có nhiệm vụ'}</span><span>Pin ${bat}%${r.charging ? ' · sạc' : ''}${r.phase === 'toStop' ? ' · ~' + etaSec(r) + 's' : ''}</span></div>
     <div class="acts">${acts.join('')}</div></div>`;
 }
 
@@ -546,26 +591,50 @@ function robotHTML(r) {
 function renderOps() {
   const k = App.state.kpi;
   const base = k.delivered + k.timeout + k.failed;
-  const tiles = [
-    [k.delivered, 'Lượt giao thành công'],
-    [base ? Math.round(k.delivered / base * 100) + '%' : '—', 'Mission completion'],
-    [k.delivered ? (k.deliverySecSum / k.delivered / 60).toFixed(1) + "'" : '—', 'TB từ gọi → khách nhận'],
-    [k.interventions, 'Lần can thiệp'],
-    [k.reroutes || 0, 'Lần đi vòng tránh vật cản'],
-    [`${k.cancelledCustomer}/${k.cancelledStaff}/${k.timeout}`, 'Huỷ: khách/nhân viên/quá giờ'],
+  const tiles = [   // [value, short label, full label]
+    [k.delivered, 'Lượt giao', 'Lượt giao thành công'],
+    [base ? Math.round(k.delivered / base * 100) + '%' : '—', 'Hoàn thành', 'Mission completion'],
+    [k.delivered ? (k.deliverySecSum / k.delivered / 60).toFixed(1) + "'" : '—', 'TB gọi → nhận', 'TB từ gọi → khách nhận'],
+    [k.interventions, 'Can thiệp', 'Lần can thiệp'],
+    [k.reroutes || 0, 'Đi vòng vật cản', 'Lần đi vòng tránh vật cản'],
+    [`${k.cancelledCustomer}/${k.cancelledStaff}/${k.timeout}`, 'Huỷ KH/NV/giờ', 'Huỷ: khách/nhân viên/quá giờ'],
   ];
-  setHTML($('kpi'), tiles.map(([v, l]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join(''));
-  setHTML($('log'), App.state.log.map(l => `<div><span class="muted">${clock(l.t)}</span><span class="${l.level}">${esc(l.text)}</span></div>`).join('') || '<p class="empty">Chưa có hoạt động</p>');
+  setHTML($('kpi'), tiles.map(([v, l, full]) => `<div class="kpi" title="${full}"><b>${v}</b><span>${l}</span></div>`).join(''));
   // Blocked robot (alert key blk-<robot>): the strip also offers "Đã dọn lối đi" -> the usual clear.
   setHTML($('strips'), strip(App.state.alerts, a => { const r = App.state.robots.find(x => a.key === 'blk-' + x.id);
     return r ? `<button class="btn sm dark" data-act="clear" data-r="${r.id}">Đã dọn lối đi</button>` : ''; }));
 }
 
+// ---- Side panel: one tab at a time; render() fills only the active one ----
+let PTAB = 'fleet', SIMR = null;
+const PTABS = { fleet: 'Đội robot', missions: 'Nhiệm vụ', log: 'Nhật ký', sim: 'Mô phỏng' };
+const SIMS = [['block', 'Vật cản trước robot', 'Đặt ghế trên lối đi ngay trước robot'], ['clear', 'Gỡ vật cản quanh robot', ''],
+  ['offline', 'Mất kết nối', ''], ['online', 'Kết nối lại', ''], ['lowbat', 'Pin yếu', '']];
+function simHTML() {
+  const ids = App.site.robots.map(r => r.id);
+  if (!ids.includes(SIMR)) SIMR = ids[0];
+  return `<p class="simcap">Chỉ có trong bản demo simulator. Robot thật báo các sự kiện này qua Robot Adapter.</p>
+    <div class="seg">${ids.map(id => `<button data-simr="${esc(id)}" ${press(id === SIMR)}>${esc(id)}</button>`).join('')}</div>
+    <div class="simgrid">${SIMS.map(([f, t, tip]) => `<button data-act="sim" data-f="${f}" title="${tip}">${t}</button>`).join('')}<button class="es" data-act="estop">Dừng khẩn cấp</button></div>
+    <button class="btn reset ${isArmed('reset') ? 'armed' : ''}" data-act="reset">${isArmed('reset') ? 'Xoá hết dữ liệu demo?' : '↺ Khởi động lại demo'}</button>`;
+}
+function renderPanel() {
+  if (!App.state) return;
+  if (PTAB === 'sim' && !hasSim()) PTAB = 'fleet';
+  const ms = sortMissions();
+  setHTML($('ptabs'), Object.entries(PTABS).filter(([k]) => k !== 'sim' || hasSim()).map(([k, t]) =>
+    `<button data-ptab="${k}" ${press(PTAB === k)}>${t}${k === 'missions' ? ' · ' + ms.length : ''}</button>`).join(''));
+  setHTML($('pbody'), PTAB === 'fleet' ? App.state.robots.map(robotHTML).join('')
+    : PTAB === 'missions' ? ms.map(missionHTML).join('') || '<p class="empty">Không có nhiệm vụ nào</p>'
+    : PTAB === 'log' ? App.state.log.map(l => `<div class="logrow"><time>${clock(l.t)}</time><span class="${l.level}">${esc(l.text)}</span></div>`).join('') || '<p class="empty">Chưa có hoạt động</p>'
+    : simHTML());
+}
+$('ptabs').onclick = e => { const b = e.target.closest('[data-ptab]'); if (b) { PTAB = b.dataset.ptab; renderPanel(); $('pbody').scrollTop = 0; } };
+$('pbody').addEventListener('click', e => { const b = e.target.closest('[data-simr]'); if (b) { SIMR = b.dataset.simr; renderPanel(); } });
+
 function render() {
   if (!App.state) return;
-  setHTML($('missions'), sortMissions().map(missionHTML).join('') || '<p class="empty">Không có nhiệm vụ nào</p>');
-  setHTML($('fleet'), App.state.robots.map(robotHTML).join(''));
-  renderOps(); renderMap(); renderDesk();
+  renderPanel(); renderOps(); renderMap(); renderDesk();
 }
 
 document.body.addEventListener('click', e => {
@@ -578,21 +647,11 @@ document.body.addEventListener('click', e => {
   if (a === 'manual') armed('man-' + r, () => send({ type: 'manual', robot: r, by: by() }), render);
   if (['pause', 'resume', 'clear'].includes(a)) send({ type: a, robot: r, by: by() });
   if (a === 'ack') send({ type: 'ack', alert: +b.dataset.id });
-  if (a === 'sim') send({ type: 'sim', robot: $('simRobot').value, fault: b.dataset.f, by: by() });
+  if (a === 'sim') send({ type: 'sim', robot: SIMR, fault: b.dataset.f, by: by() });
+  if (a === 'estop') send({ type: 'estop', robot: SIMR, by: by() });
   if (a === 'obClear') send({ type: 'obstacle', remove: 'all', by: by() });
-  if (a === 'reset') armed('reset', () => send({ type: 'reset', by: by() }), renderSim);
+  if (a === 'reset') armed('reset', () => send({ type: 'reset', by: by() }), renderPanel);
 });
-
-function renderSim() {
-  const sel = $('simRobot') ? $('simRobot').value : null;
-  $('sim').innerHTML = `<select id="simRobot" class="btn sm">${App.site.robots.map(r => `<option ${r.id === sel ? 'selected' : ''}>${r.id}</option>`).join('')}</select>
-    <button class="btn sm" data-act="sim" data-f="block" title="Đặt ghế trên lối đi ngay trước robot">🚧 Vật cản trước robot</button>
-    <button class="btn sm" data-act="sim" data-f="clear">Gỡ vật cản quanh robot</button>
-    <button class="btn sm" data-act="sim" data-f="offline">📡 Mất kết nối</button>
-    <button class="btn sm" data-act="sim" data-f="online">Kết nối lại</button>
-    <button class="btn sm" data-act="sim" data-f="lowbat">🪫 Pin yếu</button>
-    <button class="btn sm ${isArmed('reset') ? 'armed' : ''}" data-act="reset">${isArmed('reset') ? 'Xoá hết dữ liệu demo?' : '↺ Khởi động lại demo'}</button>`;
-}
 
 // Station hears cues for its own location; alerts go to everyone.
 function hears(e) { return e.stationSound === 'alert' || !e.point || !role().home || role().home === e.point; }
@@ -600,7 +659,7 @@ function hears(e) { return e.stationSound === 'alert' || !e.point || !role().hom
 let first = true;
 connect(m => {
   if (m.type === 'site') {
-    if (first) { first = false; renderSim(); if (!me) openSetup(); applyRole(); }
+    if (first) { first = false; if (!me) openSetup(); applyRole(); }
     return;
   }
   if (m.type === 'state' || m.type === 'map') render();

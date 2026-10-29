@@ -122,7 +122,7 @@ const BRAND = sub => `<a class="identity" href="index.html"><img src="logo.svg" 
 // Tables/zones are drawn where they are; the route network shows where robots may drive.
 function floorSVG(click) {
   const S = App.site, P = S.points;
-  let h = `<rect x="0" y="0" width="${S.floor.w}" height="${S.floor.h}" rx=".4" fill="none" stroke="var(--line)" stroke-width=".1"/>`;
+  let h = `<rect x="0" y="0" width="${S.floor.w}" height="${S.floor.h}" rx=".4" fill="var(--light)" stroke="var(--line)" stroke-width=".1"/>`;
   for (const [id, p] of Object.entries(P)) {
     const f = a => (click ? ` data-f="${a}"` : '');
     if (p.kind === 'table') h += `<g${f('t:' + id)}><rect class="tbl" id="pt-${id}" x="${p.x - .9}" y="${p.y - .65}" width="1.8" height="1.3" rx=".25"/><text x="${p.x}" y="${p.y}">${esc(short(id))}</text></g>`;
@@ -147,9 +147,10 @@ function netSVG(map, o = {}) {
     h += `<circle class="node${P[id] ? ' stop' : ''}${o.node === id ? ' sel' : ''}${o.from === id ? ' from' : ''}" ${o.edit ? `data-node="${id}"` : ''} cx="${n.x}" cy="${n.y}" r="${o.edit ? (P[id] ? .24 : .2) : P[id] ? .12 : .07}"/>`;
   return h;
 }
-const obstacleSVG = obs => obs.map(o => `<g class="ob ${o.kind}" data-ob="${o.id}" transform="translate(${o.x} ${o.y})"><circle r=".32"/><text>${o.kind === 'person' ? '🚶' : '🪑'}</text></g>`).join('');
-const LEGEND = `<div class="legend">${[['', 'Lối đi'], ['narrow', 'Lối hẹp · 1 robot'], ['slow', 'Đi chậm'], ['closed', 'Đã đóng']]
-  .map(([c, t]) => `<span><svg viewBox="0 0 2 .4"><line class="lane ${c}" x1=".1" y1=".2" x2="1.9" y2=".2"/></svg>${t}</span>`).join('')}
+// Obstacle disc: N = người (person, passes by), G = ghế/vật (object, stays until removed).
+const obstacleSVG = obs => obs.map(o => `<g class="ob ${o.kind}" data-ob="${o.id}" transform="translate(${o.x} ${o.y})"><circle r=".4"/><text>${o.kind === 'person' ? 'N' : 'G'}</text></g>`).join('');
+const laneKey = ([c, t]) => `<span><svg viewBox="0 0 2 .4"><line class="lane ${c}" x1=".1" y1=".2" x2="1.9" y2=".2"/></svg>${t}</span>`;
+const LEGEND = `<div class="legend">${[['', 'Lối đi'], ['narrow', 'Lối hẹp · 1 robot'], ['slow', 'Đi chậm'], ['closed', 'Đã đóng']].map(laneKey).join('')}
   <span><svg viewBox="0 0 2 .4"><line class="lane" x1=".1" y1=".2" x2="1.9" y2=".2"/><path class="arrow" d="M-.2,-.17 L.2,0 L-.2,.17 Z" transform="translate(1 .2)"/></svg>Một chiều</span>
   <span><svg viewBox="0 0 2 .4"><line class="path" x1=".1" y1=".2" x2="1.9" y2=".2"/></svg>Lộ trình robot</span></div>`;
 // Screen click -> floor coordinates (metres).
