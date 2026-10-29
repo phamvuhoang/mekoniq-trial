@@ -330,11 +330,16 @@ function view(r, m) {
     acts: act('dark', 'Nhân viên', 'Staff', 'staff') };
 }
 
-let r = null, m = null;
+let r = null, m = null, lastDest = null;
 function render() {
   if (!App.state) return;
   r = App.state.robots.find(x => x.id === ID);
   m = missionOf(r);
+  // A station moved the current table while we drive (retarget): tell whoever watches the screen.
+  const dest = r && r.phase === 'toStop' && m ? m.id + ':' + m.cur + ':' + m.stops[m.cur].p : null;
+  if (dest && lastDest && dest !== lastDest && dest.split(':').slice(0, 2).join() === lastDest.split(':').slice(0, 2).join())
+    toast(`Đổi đích → ${pname(m.stops[m.cur].p)} · New destination`);
+  lastDest = dest;
   if (!(r && r.phase === 'atStop' && m && m.stops[m.cur].a === 'standby')) pick = [];
   const v = view(r, m);
   document.body.className = 't-' + v.tone;

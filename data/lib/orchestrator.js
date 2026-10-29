@@ -212,6 +212,23 @@ function confirm(c, r, d, by) {
   advance(c, m);
 }
 
+// Wrong table noticed after the robot left: move one handoff stop to another table while it is still on its way.
+function retarget(c, m, d, by, session) {
+  const P = c.site.points, s = m.stops[d.stop], r = c.st.robots[m.robot];
+  const no = t => c.ui.push({ session, payload: JSON.stringify({ type: 'event', t: c.now, reply: true, text: 'Không đổi được: ' + t }) });
+  if (!s || s.a !== 'handoff' || !open(s) || !P[d.to] || P[d.to].kind !== 'table') return;
+  if (s.status === 'active' && r.phase !== 'toStop') return no('robot đã tới bàn');
+  if (m.stops.some(x => open(x) && x.p === d.to)) return no('bàn đã có trong chuyến');
+  const old = s.p;
+  s.p = d.to;
+  m.label = label(c, m);
+  if (s.status === 'active') goTo(c, r, d.to, 'toStop');
+  const text = `${by} đổi ${pname(c, old)} → ${pname(c, d.to)} của ${m.label}`;
+  log(c, 'info', text, m.robot);
+  ev(c, { table: old, text: `${pname(c, old)}: món chuyển sang ${pname(c, d.to)}` });
+  ev(c, { table: d.to, text });
+}
+
 // A robot summoned to a spot gets its next job from the robot screen.
 function dispatch(c, r, d, by) {
   const m = findM(c, r.mission);
@@ -372,6 +389,7 @@ function fromUI(c, d, session, seed) {
     case 'confirm': if (r) confirm(c, r, d, by); return;
     case 'dispatch': if (r) dispatch(c, r, d, by); return;
     case 'call': return call(c, d, by);
+    case 'retarget': if (m) retarget(c, m, d, by, session); return;
     case 'estop':   // simulates the physical E-stop on the robot body
       if (!r || r.halt === 'estop') return;
       r.halt = 'estop'; st.kpi.interventions++;

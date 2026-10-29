@@ -439,4 +439,34 @@ scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi g
   console.log('✓ call refused when features.call is off');
 }
 
+// ---- Phase 2 Task 2: retarget a delivery while the robot is on its way ----
+scenario('đổi bàn khi robot đang đi: tới bàn mới, không về bếp', () => {
+  send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T05', 'T07'], robot: 'R1' });
+  const id = last().id;
+  until('load', atStop('R1', 'load', 'kitchen'));
+  confirm('R1');
+  run(1);
+  assert.strictEqual(R('R1').target, 'T05');
+  const H = d => O.handle(st, site, { source: 'ui', data: { by: 'Bếp', type: 'retarget', mission: id, ...d }, session: 'S' }, now);
+  const reply = r => r.ui.filter(u => u.session === 'S').map(u => JSON.parse(u.payload).text);
+  assert.deepStrictEqual(reply(H({ stop: 1, to: 'T07' })), ['Không đổi được: bàn đã có trong chuyến']);
+  assert.strictEqual(M(id).stops[1].p, 'T05');
+  H({ stop: 2, to: 'T09' });   // pending second stop: only the stop changes
+  assert.strictEqual(M(id).stops[2].p, 'T09');
+  assert.strictEqual(R('R1').target, 'T05');
+  const staff = st.kpi.cancelledStaff;
+  events = [];
+  send({ type: 'retarget', mission: id, stop: 1, to: 'T03' });
+  assert.strictEqual(R('R1').target, 'T03');
+  assert.strictEqual(M(id).label, `#${id} Giao Bếp → Bàn 03, 09`);
+  assert.strictEqual(st.kpi.cancelledStaff, staff);
+  assert.ok(events.some(e => e.table === 'T05') && events.some(e => e.table === 'T03'));
+  assert.ok(!events.some(e => e.robotSound || e.stationSound), 'no sounds');
+  until('T03', atStop('R1', 'handoff', 'T03'));
+  assert.deepStrictEqual(reply(H({ stop: 1, to: 'T08' })), ['Không đổi được: robot đã tới bàn']);
+  assert.strictEqual(M(id).stops[1].p, 'T03');
+  confirm('R1');
+  until('T09', atStop('R1', 'handoff', 'T09'));
+});
+
 console.log('OK — all scenarios pass');
