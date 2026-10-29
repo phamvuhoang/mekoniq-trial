@@ -74,14 +74,14 @@ const isArmed = key => armedKey === key;
 // Only touch the DOM when content changed, so clicks are not swallowed by re-renders.
 function setHTML(el, html) { if (el.__html !== html) { el.__html = html; el.innerHTML = html; } }
 
+// One pill at a time: a new toast replaces the previous one.
 function toast(text, level = 'info') {
   let box = document.querySelector('.toasts');
   if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('aria-live', 'polite'); document.body.append(box); }
   const t = document.createElement('div');
   t.className = 'toast ' + level; t.textContent = text;
-  box.prepend(t);
-  setTimeout(() => t.remove(), 6000);
-  while (box.children.length > 4) box.lastChild.remove();
+  box.replaceChildren(t);
+  setTimeout(() => t.remove(), 2400);
 }
 
 const BRAND = sub => `<a class="identity" href="index.html"><img src="logo.svg" alt="">
