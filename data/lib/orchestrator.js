@@ -19,6 +19,7 @@ const SIM_FAULTS = ['block', 'clear', 'offline', 'online', 'lowbat'];
 const R = require('./route');
 const Site = require('./site');
 const WHY_VI = { object: 'vật cản', person: 'người đi qua', robot: 'robot khác' };
+const CALL_VI = { staff: 'gọi nhân viên', bill: 'xin hoá đơn', paid: 'báo đã chuyển khoản' };
 
 let lastSnap = '';
 
@@ -63,6 +64,8 @@ function alert(c, key, level, text, robot) {
   c.st.alerts.unshift({ id: ++c.st.alertSeq, key, t: c.now, level, text, robot });
   c.st.alerts.length = Math.min(c.st.alerts.length, 20);
 }
+// Phase-2 features are opt-in per site (site.features); the UI hides them too, this is the server-side gate.
+const feature = (c, f, by) => (c.site.features || {})[f] ? true : (log(c, 'warn', `${by}: tính năng "${f}" đang tắt — bỏ qua`), false);
 const resolve = (c, key) => { c.st.alerts = c.st.alerts.filter(a => a.key !== key); };
 // Client-side cues. robotSound -> robot screen, stationSound -> stations (filtered by point), table -> customer page.
 const ev = (c, e) => c.ui.push({ payload: JSON.stringify({ type: 'event', t: c.now, ...e }) });
@@ -233,6 +236,18 @@ function dispatch(c, r, d, by) {
   advance(c, m);
 }
 
+// Guest at a table asks for staff / the bill / says they paid. One alert per table+what until a station acks it.
+function call(c, d, by) {
+  const P = c.site.points;
+  if (!P[d.point] || P[d.point].kind !== 'table' || !CALL_VI[d.what] || !feature(c, 'call', by)) return;
+  const key = `call-${d.what}-${d.point}`;
+  if (c.st.alerts.some(a => a.key === key)) return;
+  const text = `${pname(c, d.point)} ${CALL_VI[d.what]}${d.what === 'paid' && d.amount ? ' · ' + String(d.amount).slice(0, 20) : ''}`;
+  alert(c, key, 'warn', text);
+  ev(c, { stationSound: 'ding', text });
+  log(c, 'info', `${by}: ${text}`);
+}
+
 function telemetry(c, d) {
   const { st, site, now } = c;
   const list = Array.isArray(d.robots) ? d.robots : [];
@@ -356,6 +371,7 @@ function fromUI(c, d, session, seed) {
     case 'cancelStop': if (m) cancelStop(c, m, d.stop, by, d.why === 'customer' ? 'customer' : 'staff'); return;
     case 'confirm': if (r) confirm(c, r, d, by); return;
     case 'dispatch': if (r) dispatch(c, r, d, by); return;
+    case 'call': return call(c, d, by);
     case 'estop':   // simulates the physical E-stop on the robot body
       if (!r || r.halt === 'estop') return;
       r.halt = 'estop'; st.kpi.interventions++;

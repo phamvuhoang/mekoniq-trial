@@ -65,5 +65,11 @@
       "name": "Sạc 1",
       "kind": "dock"
     }
+  },
+  "features": {
+    "call": false,
+    "guide": false,
+    "order": false,
+    "pay": false
   }
 }

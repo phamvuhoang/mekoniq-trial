@@ -78,3 +78,10 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   assert.strictEqual(r.site.valetudo, undefined);
   console.log('✓ migrates old site.valetudo.points');
 }
+{
+  const s = clone(seed); delete s.features;
+  assert.deepStrictEqual(S.normalize(s, seed).site.features, { call: false, guide: false, order: false, pay: false });
+  s.features = { call: 1, order: 'yes', bogus: true };
+  assert.deepStrictEqual(S.normalize(s, seed).site.features, { call: true, guide: false, order: true, pay: false });
+  console.log('✓ features default to off, coerced to booleans');
+}

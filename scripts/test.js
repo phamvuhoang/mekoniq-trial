@@ -402,4 +402,41 @@ scenario('chuyển xử lý thủ công', () => {
   console.log('✓ adapter alert / resolve events');
 }
 
+// ---- Phase 2 Task 1: call staff / bill / paid ----
+scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi gọi lại được', () => {
+  const calls = () => st.alerts.filter(a => a.key === 'call-staff-T05');
+  send({ type: 'call', point: 'T05', what: 'staff', by: 'Khách Bàn 05 (QR)' });
+  assert.strictEqual(calls().length, 1);
+  assert.strictEqual(calls()[0].text, 'Bàn 05 gọi nhân viên');
+  assert.ok(events.some(e => e.stationSound === 'ding' && e.point === undefined), 'every station hears it');
+  events = [];
+  for (let i = 0; i < 9; i++) send({ type: 'call', point: 'T05', what: 'staff' });
+  assert.strictEqual(calls().length, 1, 'ten taps, one alert');
+  assert.ok(!events.some(e => e.stationSound), 'no extra ding while the alert is open');
+  send({ type: 'ack', alert: calls()[0].id });
+  send({ type: 'call', point: 'T05', what: 'staff' });
+  assert.strictEqual(calls().length, 1, 'new alert after ack');
+  send({ type: 'call', point: 'T05', what: 'bill' });
+  assert.ok(st.alerts.some(a => a.key === 'call-bill-T05' && a.text === 'Bàn 05 xin hoá đơn'));
+  send({ type: 'call', point: 'T05', what: 'paid', amount: '120.000đ' });
+  assert.ok(st.alerts.some(a => a.key === 'call-paid-T05' && a.text === 'Bàn 05 báo đã chuyển khoản · 120.000đ'));
+  const n = st.alerts.length;
+  send({ type: 'call', point: 'kitchen', what: 'staff' });   // not a table
+  send({ type: 'call', point: 'T05', what: 'beer' });
+  assert.strictEqual(st.alerts.length, n, 'invalid point / what ignored');
+});
+
+{
+  const off = JSON.parse(JSON.stringify(site)); off.features = { ...off.features, call: false };
+  const st7 = O.init(off, now);
+  O.handle(st7, off, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
+  assert.strictEqual(st7.alerts.length, 0, 'feature off: no alert');
+  assert.strictEqual(st7.log[0].level, 'warn');
+  const none = JSON.parse(JSON.stringify(site)); delete none.features;
+  const st8 = O.init(none, now);
+  O.handle(st8, none, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
+  assert.strictEqual(st8.alerts.length, 0, 'no features block = all off');
+  console.log('✓ call refused when features.call is off');
+}
+
 console.log('OK — all scenarios pass');

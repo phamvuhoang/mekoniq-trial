@@ -12,6 +12,7 @@ const KNOBS = {
 };
 const RETRY_ERR = 'unreach|target|navigat|path';
 const MAX_BYTES = 512 * 1024;
+const FEATURES = ['call', 'guide', 'order', 'pay'];
 const TIMING = ['loadSec', 'handoffSec', 'remindSec', 'standbySec', 'lowBattery', 'chargedBattery'];
 
 // Validates and cleans a site coming from the UI. Returns {site, errors}; errors non-empty = reject.
@@ -33,6 +34,9 @@ function normalize(input, seed) {
   num(site, 'trays', 1, 8, 'site'); if (site.trays === undefined) site.trays = seed.trays;
   site.timing = site.timing && typeof site.timing === 'object' ? site.timing : { ...seed.timing };
   for (const k of TIMING) { num(site.timing, k, 0, 3600, 'timing'); if (site.timing[k] === undefined) site.timing[k] = seed.timing[k]; }
+
+  const f = site.features && typeof site.features === 'object' ? site.features : {};
+  site.features = Object.fromEntries(FEATURES.map(k => [k, !!f[k]]));
 
   // points
   site.points = site.points && typeof site.points === 'object' ? site.points : {};

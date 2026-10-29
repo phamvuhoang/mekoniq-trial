@@ -570,5 +570,11 @@
       }
     ]
   },
-  "rev": 0
+  "rev": 0,
+  "features": {
+    "call": true,
+    "guide": true,
+    "order": true,
+    "pay": true
+  }
 }
