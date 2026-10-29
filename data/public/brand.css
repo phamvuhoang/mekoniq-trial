@@ -78,7 +78,7 @@ input[type=text] { width: 100%; border: 1px solid var(--line); background: var(-
 .check input { width: 20px; height: 20px; accent-color: var(--green); }
 
 #offline { position: fixed; left: 0; right: 0; bottom: 0; z-index: 99; background: var(--danger); color: #fff; text-align: center; padding: 10px; font-weight: 700; }
-.toasts { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 90; max-width: calc(100vw - 32px); pointer-events: none; }   /* single slot: newest replaces */
+.toasts { position: fixed; left: 50%; width: max-content; bottom: 24px; transform: translateX(-50%); z-index: 90; max-width: calc(100vw - 32px); pointer-events: none; }   /* single slot: newest replaces */
 .toast { background: var(--deep); color: var(--mint); border-radius: 999px; padding: 12px 24px; font-size: 16px; font-weight: 800; text-align: center; box-shadow: 0 14px 34px rgba(7, 29, 33, .3); animation: in .2s; }
 .toast.warn { background: var(--accent); color: var(--alert-ink); }
 .toast.error { background: var(--danger); color: #fff; }
