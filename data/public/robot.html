@@ -94,7 +94,8 @@
   .step h2 { margin: 0; font-size: 20px; font-weight: 900; }
   .step h2 small { font-size: 15px; font-weight: 700; color: var(--gray); }
   .step .count { margin-left: auto; font: 500 18px var(--mono); }
-  .choice { display: inline-flex; flex-direction: column; padding: 10px 22px; border-radius: 16px; background: var(--deep); color: var(--mint); line-height: 1.15; }
+  .choice { display: inline-flex; flex-direction: column; padding: 10px 22px; border-radius: 16px; border: 2px solid var(--line); background: var(--card); color: var(--deep); line-height: 1.15; }
+  .choice[aria-pressed=true] { background: var(--deep); border-color: var(--deep); color: var(--mint); }
   .choice b { font-size: 20px; font-weight: 900; } .choice small { font-size: 13px; opacity: .7; }
   .load .tt-grid { flex: 1; min-height: 240px; }
 
@@ -182,7 +183,7 @@ function face(mood, move) {
 }
 $('startFace').innerHTML = face('happy');
 
-let pick = [];   // tables chosen while on standby at a station
+let pick = [], mode = 'deliver';   // tables chosen while on standby at a station; deliver | bus (one table)
 const act = (cls, vi, en, dataAct, extra = '') => `<button class="act ${cls}" data-act="${dataAct}" ${extra}>${L(vi, en)}</button>`;
 // Two-tap button: first tap arms it (label changes), second tap runs (see click handler).
 // Each screen has its own key so an armed button never carries over to the next screen.
@@ -287,14 +288,17 @@ function view(r, m) {
       const tables = Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
       return { bar: `${place} · Chờ lệnh`, sub: 'Choose tables', tone: 'go',
         body: `<div class="load"><p class="eyebrow">Gọi bởi ${esc(m.by)}</p>
-          <div class="step"><h2>1 · Chọn việc <small>Choose task</small></h2><div class="choice" aria-current="true">${L('Giao món', 'Deliver')}</div></div>
-          <div class="step"><h2>2 · Chọn bàn <small>Choose tables</small></h2><span class="count">${pick.length}/${App.site.trays} khay</span></div>
+          <div class="step"><h2>1 · Chọn việc <small>Choose task</small></h2>${[['deliver', 'Giao món', 'Deliver'], ['bus', 'Thu dọn bàn', 'Bus a table']].map(([k, vi, en]) =>
+            `<button class="choice" data-mode="${k}" aria-pressed="${mode === k}">${L(vi, en)}</button>`).join('')}</div>
+          <div class="step"><h2>2 · Chọn bàn <small>${mode === 'bus' ? 'Choose a table' : 'Choose tables'}</small></h2><span class="count">${mode === 'bus' ? pick.length + '/1 bàn' : `${pick.length}/${App.site.trays} khay`}</span></div>
           <div class="tt-grid cols6">${tables.map(t => {
             const [txt, cls] = tableState(t), i = pick.indexOf(t);
-            return `<button class="tt ${cls}" data-t="${t}" aria-pressed="${i >= 0}"><span class="lbl">Bàn</span><b>${esc(short(t))}</b><span class="st">${esc(txt)}</span>${i >= 0 ? `<span class="tag">✓ K${i + 1}</span>` : ''}</button>`;
+            return `<button class="tt ${cls}" data-t="${t}" aria-pressed="${i >= 0}"><span class="lbl">Bàn</span><b>${esc(short(t))}</b><span class="st">${esc(txt)}</span>${i >= 0 ? `<span class="tag">✓${mode === 'bus' ? '' : ' K' + (i + 1)}</span>` : ''}</button>`;
           }).join('')}</div></div>`,
-        acts: trays(pick.map((_, i) => i + 1), nTrays().map(i => pick[i - 1] ? 'Bàn ' + short(pick[i - 1]) : 'trống'))
-          + act('primary', pick.length ? `Đi giao ${pick.length} bàn` : 'Chọn bàn để giao', pick.length ? 'Go deliver' : 'Pick tables', 'dispatch', pick.length ? '' : 'disabled')
+        acts: (mode === 'bus' ? info('Thu dọn bàn', `Robot tới bàn thu chén đĩa rồi mang về ${esc(pname(App.site.dishPoint))} · Collects dishes, then to the dish area`)
+            + act('primary', pick.length ? `Đi thu dọn Bàn ${esc(short(pick[0]))}` : 'Chọn bàn để thu dọn', pick.length ? 'Go bus table' : 'Pick a table', 'dispatch', pick.length ? '' : 'disabled')
+          : trays(pick.map((_, i) => i + 1), nTrays().map(i => pick[i - 1] ? 'Bàn ' + short(pick[i - 1]) : 'trống'))
+            + act('primary', pick.length ? `Đi giao ${pick.length} bàn` : 'Chọn bàn để giao', pick.length ? 'Go deliver' : 'Pick tables', 'dispatch', pick.length ? '' : 'disabled'))
           + act('outline', 'Bỏ chọn', 'Clear', 'unpick', pick.length ? '' : 'disabled')
           + act('outline', 'Về trạm sạc', 'Dock', 'release') + (toDish || '') };
     }
@@ -340,7 +344,7 @@ function render() {
   if (dest && lastDest && dest !== lastDest && dest.split(':').slice(0, 2).join() === lastDest.split(':').slice(0, 2).join())
     toast(`Đổi đích → ${pname(m.stops[m.cur].p)} · New destination`);
   lastDest = dest;
-  if (!(r && r.phase === 'atStop' && m && m.stops[m.cur].a === 'standby')) pick = [];
+  if (!(r && r.phase === 'atStop' && m && m.stops[m.cur].a === 'standby')) { pick = []; mode = 'deliver'; }
   const v = view(r, m);
   document.body.className = 't-' + v.tone;
   $('bar').textContent = v.bar;
@@ -365,10 +369,13 @@ function tick() {
 }
 
 $('main').addEventListener('click', e => {
+  const md = e.target.closest('[data-mode]');
+  if (md) { mode = md.dataset.mode; pick = []; return render(); }
   const t = e.target.closest('[data-t]');
   if (t) {
     const id = t.dataset.t;
     if (pick.includes(id)) pick = pick.filter(x => x !== id);
+    else if (mode === 'bus') pick = [id];
     else if (pick.length < App.site.trays) pick.push(id);
     else toast(`Robot chỉ có ${App.site.trays} khay · ${App.site.trays} trays only`, 'warn');
     return render();
@@ -389,7 +396,7 @@ $('main').addEventListener('click', e => {
   if (a === 'pause') { send({ type: 'pause', ...base }); toast('Đã tạm dừng · Paused'); }
   if (a === 'manual') armed('man', () => send({ type: 'manual', ...base }), render);
   if (a === 'clear') send({ type: 'clear', ...base });
-  if (a === 'dispatch') { send({ type: 'dispatch', ...base, mission: m.id, tables: pick }); pick = []; }
+  if (a === 'dispatch') { send({ type: 'dispatch', ...base, mission: m.id, tables: pick, bus: mode === 'bus' }); pick = []; }
   if (a === 'unpick') { pick = []; render(); }
   if (a === 'toDish') send({ type: 'dispatch', ...base, mission: m.id, toDish: true });
   if (a === 'release') send({ type: 'dispatch', ...base, mission: m.id, release: true });

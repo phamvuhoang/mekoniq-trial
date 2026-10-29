@@ -51,7 +51,7 @@ const findM = (c, id) => c.st.missions.find(m => m.id === id);
 function label(c, m) {
   const tables = m.stops.filter(s => s.a === 'handoff').map(s => pname(c, s.p).replace('Bàn ', '')).join(', ');
   if (m.kind === 'deliver') return `#${m.id} Giao ${pname(c, m.stops[0].p)} → Bàn ${tables}`;
-  if (m.kind === 'bus') return `#${m.id} Thu dọn ${pname(c, m.stops[0].p)}`;
+  if (m.kind === 'bus') return `#${m.id} Thu dọn ${pname(c, m.stops.find(s => s.a === 'collect').p)}`;
   return `#${m.id} Gọi robot tới ${pname(c, m.stops[0].p)}`;
 }
 
@@ -240,6 +240,12 @@ function dispatch(c, r, d, by) {
     Object.assign(s, { a: 'collect', status: 'done' });
     m.kind = 'bus'; m.loaded = true;
     m.stops.push({ p: c.site.dishPoint, a: 'unload', status: 'pending' });
+  } else if (d.bus) {   // waiting at a station: go bus one table, then the dish area (like create kind:'bus')
+    const t = Array.isArray(d.tables) && d.tables.length === 1 && d.tables[0];
+    if (!P[t] || P[t].kind !== 'table' || P[s.p].kind !== 'station') return;
+    s.status = 'done';
+    m.kind = 'bus';
+    m.stops.push({ p: t, a: 'collect', status: 'pending' }, { p: c.site.dishPoint, a: 'unload', status: 'pending' });
   } else {
     const tables = [...new Set(Array.isArray(d.tables) ? d.tables : [])].filter(t => P[t] && P[t].kind === 'table').slice(0, c.site.trays);
     if (!tables.length || P[s.p].kind !== 'station') return;

@@ -469,4 +469,35 @@ scenario('đổi bàn khi robot đang đi: tới bàn mới, không về bếp',
   until('T09', atStop('R1', 'handoff', 'T09'));
 });
 
+// ---- Phase 2 Task 5: bus a table from the robot standby screen ----
+scenario('robot chờ ở bếp -> thu dọn Bàn 05 từ màn robot', () => {
+  send({ type: 'create', kind: 'summon', to: 'kitchen', robot: 'R3' });
+  const id = last().id;
+  until('standby', atStop('R3', 'standby', 'kitchen'));
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['T05', 'T07'], bus: true });   // one table only
+  assert.strictEqual(R('R3').phase, 'atStop');
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['dish'], bus: true });          // not a table
+  assert.strictEqual(R('R3').phase, 'atStop');
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['T05'], bus: true });
+  assert.strictEqual(R('R3').phase, 'toStop');
+  assert.strictEqual(R('R3').target, 'T05');
+  assert.strictEqual(M(id).kind, 'bus');
+  assert.strictEqual(M(id).label, `#${id} Thu dọn Bàn 05`);
+  assert.ok(st.log.some(l => l.text === `test giao việc cho R3: #${id} Thu dọn Bàn 05`));
+  until('collect', atStop('R3', 'collect', 'T05'));
+  confirm('R3');
+  until('dish', atStop('R3', 'unload', 'dish'));
+  confirm('R3');
+  assert.strictEqual(M(id).status, 'done');
+});
+
+scenario('thu dọn từ màn robot bị từ chối khi robot chờ ở bàn', () => {
+  send({ type: 'create', kind: 'summon', to: 'T02', robot: 'R3' });
+  const id = last().id;
+  until('standby', atStop('R3', 'standby', 'T02'));
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['T05'], bus: true });
+  assert.strictEqual(R('R3').phase, 'atStop');
+  assert.strictEqual(M(id).kind, 'summon');
+});
+
 console.log('OK — all scenarios pass');
