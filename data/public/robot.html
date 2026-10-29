@@ -88,6 +88,9 @@
   .card.note { margin-top: 18px; font-size: 18px; font-weight: 700; }
   .card.note small { display: block; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--gray); }
 
+  .gbar { margin-top: 18px; height: 14px; border-radius: 7px; background: var(--soft); overflow: hidden; }
+  .gbar i { display: block; height: 100%; width: 0; background: var(--green); transition: width .5s; }
+
   /* Standby at a station: choose task, choose tables */
   .load { height: 100%; display: flex; flex-direction: column; gap: 14px; }
   .step { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -183,6 +186,7 @@ function face(mood, move) {
 }
 $('startFace').innerHTML = face('happy');
 
+let guiding = false, gpick = null, g0 = {};   // guide: choosing the guests' table; longest route seen per mission (progress bar)
 let pick = [], mode = 'deliver';   // tables chosen while on standby at a station; deliver | bus (one table)
 const act = (cls, vi, en, dataAct, extra = '') => `<button class="act ${cls}" data-act="${dataAct}" ${extra}>${L(vi, en)}</button>`;
 // Two-tap button: first tap arms it (label changes), second tap runs (see click handler).
@@ -216,6 +220,17 @@ function routeList(m) {
 // Orchestrator flags `charging` as soon as battery < lowBattery, even mid-job ("về sạc sau việc này"), so test the level itself.
 const lowBat = r => r.battery < App.site.timing.lowBattery;
 const batChip = r => lowBat(r) ? `<div class="chips"><span class="pill danger">Pin ${Math.round(r.battery)}% · về sạc sau việc này</span></div>` : '';
+
+// Guests can be led to a table from where they wait: standby at a station / the entrance, or idle at the entrance (spec 6.2).
+function canGuide(r, m) {
+  if (!feat('guide') || r.halt || r.offline) return false;
+  const P = App.site.points, s = m && r.phase === 'atStop' && m.stops[m.cur];
+  return s ? s.a === 'standby' && ['station', 'entrance'].includes((P[s.p] || {}).kind) : !m && r.phase === 'idle' && (P[r.at] || {}).kind === 'entrance';
+}
+const guideBtn = (r, m) => canGuide(r, m) ? act('primary', 'Dẫn tôi tới bàn', 'Guide me to a table', 'guide') : '';
+const tablesOf = () => Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
+// Call staff to a table (spec 6.1): needs features.call.
+const callBtn = t => feat('call') && t ? act('outline', 'Gọi nhân viên', 'Call staff', 'call', `data-p="${esc(t)}"`) : '';
 
 // Each state -> { bar, sub: app-bar title + English line, tone, body: content column, acts: action zone }.
 function view(r, m) {
@@ -252,13 +267,21 @@ function view(r, m) {
     body: split(face('sad'), 'Mất kết nối · Offline', 'Mất kết nối robot.', 'Robot connection lost.', '<p class="lead">Đang chờ robot kết nối lại hệ thống…</p>'),
     acts: info('Mất kết nối', 'Đang chờ robot kết nối lại · Waiting for the robot to reconnect') };
 
+  if (guiding && canGuide(r, m)) return { bar: 'Dẫn khách · Chọn bàn', sub: 'Guide · Choose a table', tone: 'go',
+    body: `<div class="load"><div class="step"><h2>Quý khách ngồi bàn nào? <small>Which table are you seated at?</small></h2></div>
+      <div class="tt-grid cols6">${tablesOf().map(t => `<button class="tt" data-g="${t}" aria-pressed="${gpick === t}"><span class="lbl">Bàn</span><b>${esc(short(t))}</b></button>`).join('')}</div></div>`,
+    acts: act('primary', gpick ? `Đi tới Bàn ${esc(short(gpick))}` : 'Chọn bàn', gpick ? 'Follow me' : 'Pick a table', 'guideGo', gpick ? '' : 'disabled')
+      + act('outline', 'Quay lại', 'Back', 'guideBack') };
   if (r.phase === 'atStop' && m) {
     const s = m.stops[m.cur], place = pname(s.p);
+    if (s.a === 'guide') return { bar: `${place} · Đã tới`, sub: "We're here", tone: 'ok',
+      body: split(face('happy'), 'Dẫn khách · Guide', `Đã tới ${esc(place)}.`, `This is ${esc(place)}. Enjoy your meal!`, '<p class="lead" id="timer"></p>'),
+      acts: act('primary', 'Đã tới bàn', "We're here", 'confirm') + callBtn(s.p) };
     if (s.a === 'handoff') return { bar: `${place} · Giao món đến`, sub: 'Your order is here', tone: lowBat(r) ? 'warn' : 'ok',
       body: split(trays([s.tray], trayLabels(m)), `${esc(place)} · Đã tới`, `Mời quý khách lấy món ở Khay ${s.tray}`, `Please take your order from Tray ${s.tray}`,
         `${m.note ? `<div class="card note"><small>Ghi chú · Note</small>${esc(m.note)}</div>` : ''}<p class="lead" id="timer"></p>${batChip(r)}`, 'hand'),
       acts: act('primary', 'Đã nhận món', 'Got it, thanks', 'confirm')
-        + armAct('cx', 'warn', ['Trả lại bếp', 'Not mine, send back'], ['Chạm lần nữa · robot mang món về', 'Tap again to send it back'], 'cancelStop') };
+        + armAct('cx', 'warn', ['Trả lại bếp', 'Not mine, send back'], ['Chạm lần nữa · robot mang món về', 'Tap again to send it back'], 'cancelStop') + callBtn(s.p) };
     if (s.a === 'load') {
       const open = m.stops.filter(x => x.a === 'handoff' && !isOff(x)).map(x => x.tray);
       return { bar: `${place} · Xếp món lên khay`, sub: 'Load the trays', tone: 'go',
@@ -284,7 +307,7 @@ function view(r, m) {
       const toDish = s.p !== App.site.dishPoint && act('outline', 'Mang chén về khu rửa', 'Take dishes to wash', 'toDish');
       if (App.site.points[s.p].kind !== 'station') return { bar: `${place} · Chờ lệnh`, sub: 'Standby', tone: 'go',
         body: split(face('wait'), `${esc(place)} · Chờ lệnh`, 'Robot đang chờ.', 'Robot is waiting.', `<p class="lead">Gọi bởi ${esc(m.by)}</p>`),
-        acts: (toDish || '') + act('primary', 'Xong · Cho robot về', 'Done · Send robot back', 'release') };
+        acts: guideBtn(r, m) + (toDish || '') + act('primary', 'Xong · Cho robot về', 'Done · Send robot back', 'release') };
       const tables = Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
       return { bar: `${place} · Chờ lệnh`, sub: 'Choose tables', tone: 'go',
         body: `<div class="load"><p class="eyebrow">Gọi bởi ${esc(m.by)}</p>
@@ -300,8 +323,19 @@ function view(r, m) {
           : trays(pick.map((_, i) => i + 1), nTrays().map(i => pick[i - 1] ? 'Bàn ' + short(pick[i - 1]) : 'trống'))
             + act('primary', pick.length ? `Đi giao ${pick.length} bàn` : 'Chọn bàn để giao', pick.length ? 'Go deliver' : 'Pick tables', 'dispatch', pick.length ? '' : 'disabled'))
           + act('outline', 'Bỏ chọn', 'Clear', 'unpick', pick.length ? '' : 'disabled')
-          + act('outline', 'Về trạm sạc', 'Dock', 'release') + (toDish || '') };
+          + act('outline', 'Về trạm sạc', 'Dock', 'release') + (toDish || '') + guideBtn(r, m) };
     }
+  }
+  if (r.phase === 'toStop' && m && m.stops[m.cur].a === 'guide') {
+    const place = pname(m.stops[m.cur].p);
+    return { bar: `Dẫn khách → ${place}`, sub: 'Please follow me', tone: lowBat(r) ? 'warn' : 'go',
+      body: `<div class="moving"><div class="mv"><div class="mvhead">${face('go', true)}<div><p class="eyebrow">Mời quý khách đi theo tôi · Please follow me</p><p>${esc(m.label)}</p></div></div>
+        <p class="dest" style="--n:${Math.max(3, place.length)}">${esc(place)}</p><p id="timer"></p><div class="gbar"><i id="gbar"></i></div>
+        <div class="yield">Xin quý khách đi sau robot · Please walk behind the robot</div>${batChip(r)}</div></div>`,
+      acts: info(r.slow ? 'Đang đi chậm' : 'Đang dẫn đường', 'Robot tự dừng khi có người hoặc vật cản · Stops for people and obstacles')
+        + (r.slow ? act('outline', 'Đi bình thường', 'Normal speed', 'speed') : act('outline', 'Đi chậm hơn', 'Slower please', 'speed'))
+        + callBtn(m.stops[m.cur].p)
+        + armAct('cg', 'danger', ['Huỷ dẫn đường', 'Cancel'], ['Chạm lần nữa để huỷ', 'Tap again to cancel'], 'cancel') };
   }
   if (r.phase === 'toStop' && m) {
     const s = m.stops[m.cur], place = pname(s.p);
@@ -331,7 +365,7 @@ function view(r, m) {
   return { bar: `Robot ${ID} · ${dock}`, sub: 'Ready', tone: 'ok',
     body: split(face('happy'), `MEKONIQ Serve · ${esc(ID)}`, 'Xin chào!', 'Hello!',
       `<div class="chips"><span class="pill">${free} khay trống · ${free} trays free</span><span class="pill ok">Sẵn sàng · Ready</span></div><p class="lead">Chờ nhiệm vụ từ các trạm.</p>`, 'hello'),
-    acts: act('dark', 'Nhân viên', 'Staff', 'staff') };
+    acts: guideBtn(r, m) + act('dark', 'Nhân viên', 'Staff', 'staff') };
 }
 
 let r = null, m = null, lastDest = null;
@@ -345,6 +379,8 @@ function render() {
     toast(`Đổi đích → ${pname(m.stops[m.cur].p)} · New destination`);
   lastDest = dest;
   if (!(r && r.phase === 'atStop' && m && m.stops[m.cur].a === 'standby')) { pick = []; mode = 'deliver'; }
+  if (!r || !canGuide(r, m)) { guiding = false; gpick = null; }
+  if (r && m && m.kind === 'guide' && r.phase === 'toStop') g0[m.id] = Math.max(g0[m.id] || 0, r.rem || 0);
   const v = view(r, m);
   document.body.className = 't-' + v.tone;
   $('bar').textContent = v.bar;
@@ -365,10 +401,14 @@ function tick() {
   const t = $('timer');
   if (!t || !r) return;
   if (r.phase === 'toStop') { const n = etaSec(r); t.textContent = isValetudo() ? '' : n ? `Còn khoảng ${n} giây · ~${n} s` : 'Sắp tới · Arriving'; }   // Valetudo reports no remaining route
+  const gb = $('gbar');
+  if (gb && m && g0[m.id]) gb.style.width = Math.round(100 * (1 - (r.rem || 0) / g0[m.id])) + '%';
   if (r.phase === 'atStop') { const n = Math.max(0, App.site.timing.handoffSec - Math.round((serverNow() - r.waitSince) / 1000)); t.textContent = `Robot tự quay về sau ${n} giây · Returns in ${n} s`; }
 }
 
 $('main').addEventListener('click', e => {
+  const g = e.target.closest('[data-g]');
+  if (g) { gpick = gpick === g.dataset.g ? null : g.dataset.g; return render(); }
   const md = e.target.closest('[data-mode]');
   if (md) { mode = md.dataset.mode; pick = []; return render(); }
   const t = e.target.closest('[data-t]');
@@ -400,6 +440,11 @@ $('main').addEventListener('click', e => {
   if (a === 'unpick') { pick = []; render(); }
   if (a === 'toDish') send({ type: 'dispatch', ...base, mission: m.id, toDish: true });
   if (a === 'release') send({ type: 'dispatch', ...base, mission: m.id, release: true });
+  if (a === 'guide') { guiding = true; gpick = null; render(); }
+  if (a === 'guideBack') { guiding = false; render(); }
+  if (a === 'guideGo' && gpick) { send({ type: 'create', kind: 'guide', to: gpick, ...base, by: 'Khách (màn ' + ID + ')' }); guiding = false; gpick = null; }
+  if (a === 'speed') { send({ type: 'speed', ...base, slow: !r.slow }); toast(r.slow ? 'Đi bình thường · Normal speed' : 'Đi chậm hơn · Slowing down'); }
+  if (a === 'call') { send({ type: 'call', point: b.dataset.p, what: 'staff', by: 'Khách ' + pname(b.dataset.p) + ' (màn ' + ID + ')' }); toast('Đã gọi nhân viên · Staff called'); }
   if (a === 'staff') toast('Gọi robot từ máy trạm · Call the robot from a station');
 });
 

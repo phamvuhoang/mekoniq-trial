@@ -500,4 +500,68 @@ scenario('thu dọn từ màn robot bị từ chối khi robot chờ ở bàn', 
   assert.strictEqual(M(id).kind, 'summon');
 });
 
+// ---- Phase 2 Task 6: guide guests to a table + slow mode ----
+scenario('dẫn khách từ bếp tới Bàn 07, đi chậm, khách xác nhận', () => {
+  send({ type: 'create', kind: 'guide', to: 'T07', robot: 'R1' });   // idle at the dock: refused
+  assert.strictEqual(st.missions.length, 0);
+  send({ type: 'create', kind: 'summon', to: 'kitchen', robot: 'R1' });
+  const sid = last().id;
+  until('standby', atStop('R1', 'standby', 'kitchen'));
+  send({ type: 'create', kind: 'guide', to: 'kitchen', robot: 'R1' });   // not a table
+  send({ type: 'create', kind: 'guide', to: 'T07', robot: 'any' });      // only from a robot screen
+  assert.strictEqual(st.missions.length, 1);
+  send({ type: 'create', kind: 'guide', to: 'T07', robot: 'R1', by: 'Khách' });
+  assert.strictEqual(M(sid).status, 'done', 'standby handed over');
+  const g = last();
+  assert.deepStrictEqual([g.kind, g.status, g.robot, R('R1').mission, R('R1').target], ['guide', 'active', 'R1', g.id, 'T07']);
+  assert.strictEqual(g.label, `#${g.id} Dẫn khách tới Bàn 07`);
+  // slow mode: one cmd per change, the simulator drives at half speed
+  const H = d => O.handle(st, site, { source: 'ui', data: { by: 'Khách', type: 'speed', robot: 'R1', ...d } }, now);
+  run(1);
+  let r = H({ slow: true });
+  assert.deepStrictEqual(r.cmds, [{ cmd: 'speed', robot: 'R1', factor: 0.5 }]);
+  for (const cmd of r.cmds) S.handle(sim, site, cmd, now);
+  assert.strictEqual(R('R1').slow, true);
+  assert.deepStrictEqual(H({ slow: true }).cmds, [], 'no change, no cmd');
+  const rem0 = R('R1').rem; run(2);
+  const slowStep = rem0 - R('R1').rem;
+  assert.ok(slowStep > 0 && slowStep <= site.sim.speed * 2 * 0.5 + 0.01, `half speed: moved ${slowStep}`);
+  r = H({ slow: false });
+  assert.deepStrictEqual(r.cmds, [{ cmd: 'speed', robot: 'R1', factor: 1 }]);
+  for (const cmd of r.cmds) S.handle(sim, site, cmd, now);
+  until('T07', atStop('R1', 'guide', 'T07'));
+  confirm('R1');
+  assert.strictEqual(M(g.id).status, 'done');
+  assert.strictEqual(st.kpi.guides, 1);
+  until('dock', () => R('R1').phase === 'idle' && R('R1').at === 'D1');
+  assert.deepStrictEqual(O.handle(st, site, { source: 'ui', data: { type: 'speed', robot: 'R1', slow: true } }, now).cmds, [], 'no mission: speed ignored');
+});
+
+scenario('dẫn khách: không ai xác nhận -> nhắc, quá giờ robot tự về, không tính timeout giao món', () => {
+  send({ type: 'create', kind: 'summon', to: 'bar', robot: 'R2' });
+  until('standby', atStop('R2', 'standby', 'bar'));
+  send({ type: 'create', kind: 'guide', to: 'T01', robot: 'R2' });
+  const g = last();
+  pump({ source: 'ui', data: { type: 'speed', robot: 'R2', slow: true } });
+  until('T01', atStop('R2', 'guide', 'T01'));
+  run(site.timing.handoffSec + 1);
+  assert.ok(events.some(e => e.robotSound === 'remind' && e.robot === 'R2'));
+  assert.strictEqual(M(g.id).status, 'timeout');
+  assert.strictEqual(st.kpi.timeout, 0);
+  assert.strictEqual(R('R2').slow, false, 'slow mode ends with the mission');
+  assert.strictEqual(sim.robots.R2.factor, 1);
+  assert.strictEqual(R('R2').phase, 'toDock');
+});
+
+{
+  const off = JSON.parse(JSON.stringify(site)); off.features.guide = false;
+  const st9 = O.init(off, now);
+  st9.robots.R1.phase = 'atStop'; st9.robots.R1.at = 'kitchen';
+  O.handle(st9, off, { source: 'ui', data: { by: 't', type: 'create', kind: 'summon', to: 'kitchen', robot: 'R1' } }, now);
+  st9.robots.R1.phase = 'atStop';
+  O.handle(st9, off, { source: 'ui', data: { by: 't', type: 'create', kind: 'guide', to: 'T07', robot: 'R1' } }, now);
+  assert.ok(!st9.missions.some(m => m.kind === 'guide'), 'feature off: no guide');
+  console.log('✓ guide refused when features.guide is off');
+}
+
 console.log('OK — all scenarios pass');

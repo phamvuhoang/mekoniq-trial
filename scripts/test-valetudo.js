@@ -576,3 +576,11 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.strictEqual(V.health(st).robots.R1.battery, 50);                         // still ingested
   console.log('✓ health: retained redelivery does not count as heard from');
 }
+{
+  const st = V.init(SITE);
+  const r = V.handle(st, SITE, { cmd: 'speed', robot: 'R1', factor: 0.5 }, 1e12);
+  assert.deepStrictEqual(r.mqtt, []);
+  assert.deepStrictEqual(r.events, [{ event: 'log', robot: 'R1', text: 'R1: đi chậm — robot Valetudo không hỗ trợ, bỏ qua' }]);
+  assert.deepStrictEqual(V.handle(st, SITE, { cmd: 'speed', robot: 'ZZ', factor: 1 }, 1e12).events, []);
+  console.log('✓ speed: Valetudo logs and ignores it');
+}

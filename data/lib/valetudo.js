@@ -219,6 +219,9 @@ function handle(st, site, input, now) {
       if (b && !b.goal && !b.paused && !MOVING.includes(b.status) && Number.isFinite(input.x) && Number.isFinite(input.y))
         mqtt.push({ topic: b.topic + '/GoToLocationCapability/go/set', payload: JSON.stringify({ coordinates: { x: Math.round(input.x), y: Math.round(input.y) } }) });
       break;
+    case 'speed':   // guide slow mode: Valetudo has no speed control
+      if (b) events.push({ event: 'log', robot: id, text: `${id}: ${input.factor < 1 ? 'đi chậm' : 'đi bình thường'} — robot Valetudo không hỗ trợ, bỏ qua` });
+      break;
     case 'stop': if (b) { b.paused = true; b.pending = false; b.checkUntil = 0; mqtt.push(op(b, 'STOP')); } break;
     case 'resume':
       if (!b) break;

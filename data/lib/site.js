@@ -4,7 +4,7 @@
 // Also loaded by the browser (setup.html) the way map.html loads lib/route.js.
 
 const ID = /^[A-Za-z][A-Za-z0-9_-]{0,15}$/;
-const KINDS = ['table', 'station', 'dish', 'dock'];
+const KINDS = ['table', 'station', 'dish', 'dock', 'entrance'];   // entrance = where guests wait to be guided
 // Valetudo per-robot knobs: [default, min, max]. Hints shown by setup.html.
 const KNOBS = {
   arriveCm: [40, 0, 300], nomoveSec: [10, 5, 300], tripSec: [180, 5, 300],

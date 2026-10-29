@@ -4,7 +4,7 @@
 // It only talks to robots through the adapter contract, so the simulator can be swapped for a
 // vendor gateway without touching this file:
 //   cmds   -> {cmd:'goto', robot, to, x, y, token} | {cmd:'stop'|'resume', robot} | {cmd:'map', map, v}
-//             | {cmd:'obstacle', x, y, kind | remove} | {cmd:'sim', robot, fault} | {cmd:'reset'}
+//             | {cmd:'obstacle', x, y, kind | remove} | {cmd:'sim', robot, fault} | {cmd:'reset'} | {cmd:'speed', robot, factor}
 //   events <- {event:'telemetry', mapV, obstacles, robots:[{id, x, y, battery, moving, blocked, nav, why, path, rem}]}
 //             | {event:'arrived', robot, token} | {event:'reroute', robot, why}
 // The route network (st.map) lives here, like a fleet manager's map; robots get it via {cmd:'map'}.
@@ -12,9 +12,9 @@
 
 const OFFLINE_SEC = 3;
 const KEEP_LOG = 60, KEEP_HISTORY = 30;
-const ACTION_VI = { load: 'Xếp đồ lên khay', handoff: 'Giao cho khách', collect: 'Thu chén đĩa', unload: 'Dỡ chén đĩa', return: 'Trả lại món bị huỷ', standby: 'Chờ lệnh' };
-const STATUS_VI = { done: 'hoàn thành', cancelled: 'đã huỷ', failed: 'chuyển xử lý thủ công' };
-const ARRIVE_SOUND = { load: 'load', handoff: 'arrived', collect: 'collect', unload: 'unload', return: 'unload', standby: 'standby' };
+const ACTION_VI = { load: 'Xếp đồ lên khay', handoff: 'Giao cho khách', collect: 'Thu chén đĩa', unload: 'Dỡ chén đĩa', return: 'Trả lại món bị huỷ', standby: 'Chờ lệnh', guide: 'Dẫn khách' };
+const STATUS_VI = { done: 'hoàn thành', cancelled: 'đã huỷ', failed: 'chuyển xử lý thủ công', timeout: 'không ai xác nhận, robot tự về' };
+const ARRIVE_SOUND = { load: 'load', handoff: 'arrived', collect: 'collect', unload: 'unload', return: 'unload', standby: 'standby', guide: 'arrived' };
 const SIM_FAULTS = ['block', 'clear', 'offline', 'online', 'lowbat'];
 const R = require('./route');
 const Site = require('./site');
@@ -25,7 +25,7 @@ let lastSnap = '';
 
 function init(site, now) {
   const st = { seq: 0, alertSeq: 0, robots: {}, missions: [], history: [], log: [], alerts: [],
-    kpi: { delivered: 0, cancelledCustomer: 0, cancelledStaff: 0, timeout: 0, failed: 0, interventions: 0, deliverySecSum: 0, reroutes: 0 } };
+    kpi: { delivered: 0, cancelledCustomer: 0, cancelledStaff: 0, timeout: 0, failed: 0, interventions: 0, deliverySecSum: 0, reroutes: 0, guides: 0 } };
   sync(st, site, now);
   return st;
 }
@@ -51,6 +51,7 @@ const findM = (c, id) => c.st.missions.find(m => m.id === id);
 function label(c, m) {
   const tables = m.stops.filter(s => s.a === 'handoff').map(s => pname(c, s.p).replace('Bàn ', '')).join(', ');
   if (m.kind === 'deliver') return `#${m.id} Giao ${pname(c, m.stops[0].p)} → Bàn ${tables}`;
+  if (m.kind === 'guide') return `#${m.id} Dẫn khách tới ${pname(c, m.stops[0].p)}`;
   if (m.kind === 'bus') return `#${m.id} Thu dọn ${pname(c, m.stops.find(s => s.a === 'collect').p)}`;
   return `#${m.id} Gọi robot tới ${pname(c, m.stops[0].p)}`;
 }
@@ -108,7 +109,7 @@ function advance(c, m) {
 }
 
 function finish(c, m, status) {
-  const key = { deliver: 'handoff', bus: 'collect', summon: 'standby' }[m.kind];
+  const key = { deliver: 'handoff', bus: 'collect', summon: 'standby', guide: 'guide' }[m.kind];
   m.status = status || (m.stops.some(s => s.a === key && s.status === 'done') ? 'done' : 'cancelled');
   m.endedAt = c.now;
   c.st.missions = c.st.missions.filter(x => x !== m);
@@ -117,6 +118,7 @@ function finish(c, m, status) {
   log(c, m.status === 'done' ? 'ok' : 'warn', `${m.label}: ${STATUS_VI[m.status]}`, m.robot);
   const r = c.st.robots[m.robot];
   if (r && r.mission === m.id) {
+    if (r.slow) { r.slow = false; c.cmds.push({ cmd: 'speed', robot: r.id, factor: 1 }); }
     r.mission = null; r.homeDue = true;   // heads home after assign(): a queued mission takes it straight on, no detour via the dock
     resolve(c, 'wait-' + r.id);
   }
@@ -149,7 +151,8 @@ function create(c, d, by) {
   } else if (d.kind === 'bus') {
     if (!isTable(d.table)) return;
     stops = [{ p: d.table, a: 'collect' }, { p: c.site.dishPoint, a: 'unload' }];
-  } else if (d.kind === 'summon') {
+  } else if (d.kind === 'guide') return guide(c, d, by);
+  else if (d.kind === 'summon') {
     if (!P[d.to] || P[d.to].kind === 'dock') return;
     stops = [{ p: d.to, a: 'standby' }];
   } else return;
@@ -158,6 +161,24 @@ function create(c, d, by) {
   m.label = label(c, m);
   c.st.missions.push(m);
   log(c, 'info', `${by} tạo ${m.label}${m.urgent ? ' (GẤP)' : ''}${pref !== 'any' ? ' cho ' + pref : ''}`);
+}
+
+// Guests waiting where the robot stands (a station or the entrance) ask it to lead them to a table.
+// Only from the robot's own screen; the robot takes the job at once, handing over its standby job if it has one.
+function guide(c, d, by) {
+  const P = c.site.points, r = c.st.robots[d.robot], cur = r && findM(c, r.mission);
+  if (!r || !P[d.to] || P[d.to].kind !== 'table' || r.halt || r.offline) return;
+  const s = cur && r.phase === 'atStop' && cur.stops[cur.cur];
+  const here = s ? s.a === 'standby' && ['station', 'entrance'].includes(P[s.p].kind) : !cur && r.phase === 'idle' && P[r.at] && P[r.at].kind === 'entrance';
+  if (!here || !feature(c, 'guide', by)) return;
+  if (cur) { s.status = 'done'; s.by = by; finish(c, cur); }
+  const m = { id: ++c.st.seq, kind: 'guide', by, urgent: false, robotPref: r.id, createdAt: c.now, startedAt: c.now, status: 'active',
+    robot: r.id, loaded: false, cur: -1, note: '', stops: [{ p: d.to, a: 'guide', status: 'pending' }] };
+  m.label = label(c, m);
+  c.st.missions.push(m);
+  r.mission = m.id; r.homeDue = false;
+  log(c, 'info', `${by}: ${r.id} ${m.label}`, r.id);
+  advance(c, m);
 }
 
 // Drops one stop. Food already on a tray must go back to where it was loaded, never be abandoned.
@@ -202,6 +223,7 @@ function confirm(c, r, d, by) {
   s.status = 'done'; s.doneAt = c.now; s.by = by;
   if (s.a === 'load' || s.a === 'collect') m.loaded = true;
   if (s.a === 'unload' || s.a === 'return') m.loaded = false;
+  if (s.a === 'guide') c.st.kpi.guides = (c.st.kpi.guides || 0) + 1;
   if (s.a === 'handoff') {
     c.st.kpi.delivered++;
     c.st.kpi.deliverySecSum += (c.now - m.createdAt) / 1000;
@@ -342,6 +364,15 @@ function timers(c) {
         r.lastRemind = c.now;
         ev(c, { robot: r.id, robotSound: 'remind', table: s.p, text: `Nhắc ${pname(c, s.p)} nhận món` });
       }
+    } else if (s.a === 'guide') {   // nobody tapped "Đã tới bàn": remind, then head back (not a delivery timeout)
+      if (waited >= T.handoffSec) {
+        s.status = 'skipped';
+        log(c, 'warn', `${r.id} dẫn khách tới ${pname(c, s.p)}: không ai xác nhận sau ${T.handoffSec}s`, r.id);
+        finish(c, m, 'timeout');
+      } else if ((c.now - r.lastRemind) / 1000 >= T.remindSec) {
+        r.lastRemind = c.now;
+        ev(c, { robot: r.id, robotSound: 'remind', text: `Nhắc khách ${pname(c, s.p)}` });
+      }
     } else if (s.a === 'standby') {
       if (waited >= T.standbySec) { s.status = 'done'; log(c, 'info', `${r.id} chờ quá lâu tại ${pname(c, s.p)}, tự về`, r.id); advance(c, m); }
     } else if (waited >= T.loadSec && !r.waitAlerted) {
@@ -395,6 +426,12 @@ function fromUI(c, d, session, seed) {
     case 'confirm': if (r) confirm(c, r, d, by); return;
     case 'dispatch': if (r) dispatch(c, r, d, by); return;
     case 'call': return call(c, d, by);
+    case 'speed':   // guide: "Đi chậm hơn" for guests who walk slowly; ends with the mission
+      if (!r || !r.mission || r.offline || !!d.slow === !!r.slow) return;
+      r.slow = !!d.slow;
+      c.cmds.push({ cmd: 'speed', robot: r.id, factor: r.slow ? 0.5 : 1 });
+      log(c, 'info', `${by}: ${r.id} ${r.slow ? 'đi chậm' : 'đi bình thường'}`, r.id);
+      return;
     case 'retarget': if (m) retarget(c, m, d, by, session); return;
     case 'estop':   // simulates the physical E-stop on the robot body
       if (!r || r.halt === 'estop') return;
@@ -470,8 +507,8 @@ function fromUI(c, d, session, seed) {
 
 function snapshot(st) {
   return {
-    robots: Object.values(st.robots).map(({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos }) =>
-      ({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos: pos || null })),
+    robots: Object.values(st.robots).map(({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos, slow }) =>
+      ({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos: pos || null, slow: !!slow })),
     missions: st.missions, history: st.history.slice(0, 15), log: st.log.slice(0, 40), alerts: st.alerts, kpi: st.kpi,
     obstacles: st.obstacles, mapV: st.map.v
   };

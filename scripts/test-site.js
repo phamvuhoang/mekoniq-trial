@@ -95,3 +95,8 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   assert.strictEqual(S.normalize(s, seed).site.notes.length, 4, 'all empty -> defaults');
   console.log('✓ quick notes trimmed, capped, defaulted');
 }
+{
+  const s = clone(seed); s.points.door = { name: 'Cửa đón khách', kind: 'entrance' };
+  assert.deepStrictEqual(S.normalize(s, seed).errors, []);
+  console.log('✓ entrance points accepted');
+}
