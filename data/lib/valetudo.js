@@ -76,6 +76,7 @@ const parseMap = payload => parseMapData(payload).pos;
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
 const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000, SLOW_RETRY = 4;
+const MQTT_DOWN_TEXT = 'Broker MQTT trong máy không chạy — robot thật không điều khiển được. Mở Termux, chạy lại install hoặc mosquitto -c ~/robot/mosquitto.conf -d';
 // Per-robot knobs in robots[].valetudo (defaults in lib/site.js KNOBS): arriveCm, nomoveSec, tripSec,
 // retrySec, retryMax, stuckSec, progressCm, acceptCm, retryErr.
 const knob = (r, k, d) => (r.valetudo && Number.isFinite(r.valetudo[k]) ? r.valetudo[k] : d);
@@ -90,10 +91,10 @@ const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id
 
 // What the robot has told us, and the trip in progress: both survive a rebuild (knob / point edited in setup.html,
 // which happens during service) as long as the topic is the same robot. A rebuild only swaps the knobs.
-const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'stateSeen', 'mapMeta'];
+const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'stateSeen', 'mapMeta', 'seenAt', 'mapAt', 'wifi'];
 const TRIP = ['goal', 'pending', 'pendingSince', 'sentAt', 'seenMoving', 'checkUntil', 'paused', 'blocked', 'why', 'waiting', 'tries', 'retryAt', 'lastPos', 'progressAt', 'waitPos'];
 function init(site, old) {
-  const st = { key: robotsKey(site), boot: BOOT, robots: {} };
+  const st = { key: robotsKey(site), boot: BOOT, link: old && old.link !== undefined ? old.link : true, robots: {} };
   for (const r of site.robots) {
     if (r.driver !== 'valetudo') continue;
     if (!ours(r)) { console.warn(`[valetudo] ${r.id}: thiếu "valetudo": { "topic": "<prefix>/<identifier>" } trong site.json — bỏ qua robot này`); continue; }
@@ -102,7 +103,7 @@ function init(site, old) {
       nomoveMs: knob(r, 'nomoveSec', 10) * 1000, tripMs: knob(r, 'tripSec', 180) * 1000,
       retryMs: knob(r, 'retrySec', 15) * 1000, retryMax: knob(r, 'retryMax', 4), stuckMs: knob(r, 'stuckSec', 20) * 1000,
       progressCm: knob(r, 'progressCm', 15), acceptCm: knob(r, 'acceptCm', 80), retryRe,
-      status: null, err: null, errRetry: false, battery: null, pos: null, online: false,
+      status: null, err: null, errRetry: false, battery: null, pos: null, online: false, seenAt: 0, mapAt: 0, wifi: null,
       goal: null, pending: false, pendingSince: 0, sentAt: 0, seenMoving: false, checkUntil: 0,
       paused: false, blocked: false, why: null, waiting: false, tries: 0, retryAt: 0, lastPos: null, progressAt: 0, waitPos: null, ...calib(site, r) };
     const prev = old && old.robots && old.robots[r.id];
@@ -233,7 +234,13 @@ function handle(st, site, input, now) {
       }
       break;
     case 'mqtt': ingest(st, input, now, events, mqtt, maps); break;
-    case 'link': if (!input.up) for (const r of Object.values(st.robots)) r.online = false; break;   // broker connection lost
+    case 'link': {   // broker connection lost / back: one alert per transition, the station shows the real cause
+      const up = !!input.up;
+      if (up !== st.link) events.push(up ? { event: 'resolve', key: 'mqtt-down' } : { event: 'alert', key: 'mqtt-down', level: 'error', text: MQTT_DOWN_TEXT });
+      st.link = up;
+      if (!up) for (const r of Object.values(st.robots)) r.online = false;
+      break;
+    }
     case 'tick':
       for (const [rid, r] of Object.entries(st.robots)) {
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
@@ -270,6 +277,7 @@ function ingest(st, input, now, events, mqtt, maps) {
   for (const [id, b] of Object.entries(st.robots)) {
     if (!input.topic.startsWith(b.topic + '/')) continue;
     const key = input.topic.slice(b.topic.length + 1), v = String(input.payload);
+    b.seenAt = now;
     if (key === '$state') { b.online = v === 'ready'; b.stateSeen = true; }
     else if (!b.stateSeen) b.online = true;   // $state is only (re)sent on connect; a robot configured after the subscription never gets it
     if (key === '$state') continue;
@@ -285,10 +293,11 @@ function ingest(st, input, now, events, mqtt, maps) {
     else if (key === 'MapData/map-data') {
       const { pos, map } = parseMapData(input.payload);
       b.pos = pos || b.pos;
-      if (map) { maps[id] = { ...map, t: now }; b.mapMeta = { size: map.size, charger: map.charger }; }
+      if (map) { maps[id] = { ...map, t: now }; b.mapMeta = { size: map.size, charger: map.charger }; b.mapAt = now; }
       progress(b, now);
       if (b.checkUntil && b.goal && !b.blocked && !b.waiting) check(id, b, now, events);
     }
+    else if (key.startsWith('WifiConfigurationCapability/')) wifi(b, key.slice(28), v);
     else if (key === 'StatusStateAttribute/status') {
       b.status = v;
       if (!b.goal || b.paused) continue;
@@ -308,6 +317,30 @@ function ingest(st, input, now, events, mqtt, maps) {
   }
 }
 
+// Wi-Fi facts for setup.html "Hệ thống" (topic names from Valetudo's WifiConfigurationCapabilityMqttHandle, not yet
+// seen on real firmware). Garbage keeps the previous value.
+function wifi(b, k, v) {
+  let val;
+  if (k === 'ips') {
+    let a; try { a = JSON.parse(v); } catch (e) { a = v.split(','); }
+    if (!Array.isArray(a)) return;
+    val = a.map(x => String(x).trim()).filter(x => /^[0-9a-f.:]+$/i.test(x));
+    if (!val.length) return;
+  }
+  else if (k === 'ssid') { if (!v.trim()) return; val = v; }
+  else if (k === 'signal') { if (v.trim() === '' || !Number.isFinite(Number(v))) return; val = Number(v); }
+  else return;
+  b.wifi = { ...(b.wifi || { ips: [], ssid: null, signal: null }), [k]: val };
+}
+
+// GET /api/health: what each real robot last told us (lib/health.js wraps it).
+function health(st, site, now) {
+  const robots = {};
+  for (const [id, b] of Object.entries(st.robots))
+    robots[id] = { topic: b.topic, online: b.online, status: b.status, battery: b.battery, seenAt: b.seenAt, mapAt: b.mapAt, wifi: b.wifi };
+  return { link: st.link, robots };
+}
+
 function telemetry(st, site) {
   const robots = [];
   for (const [id, b] of Object.entries(st.robots)) {
@@ -322,4 +355,4 @@ function telemetry(st, site) {
   return { event: 'telemetry', robots };
 }
 
-module.exports = { fit, toSite, calib, init, handle, arriveCm, parseMap, parseMapData };
+module.exports = { fit, toSite, calib, init, handle, arriveCm, parseMap, parseMapData, health };

@@ -520,3 +520,34 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.strictEqual(H({ cmd: 'tick' }).events.find(e => e.event === 'telemetry').robots[0].nav, 'moving');
   console.log('✓ new goal right after a sent command stops the robot first');
 }
+{
+  const st = V.init(SITE); let now = 1e12;
+  const H = (i) => V.handle(st, SITE, i, now);
+  // link alert once per transition
+  let ev = H({ cmd: 'link', up: false }).events.filter(e => e.event !== 'telemetry');
+  assert.deepStrictEqual(ev.map(e => [e.event, e.key, e.level]), [['alert', 'mqtt-down', 'error']]);
+  assert.ok(ev[0].text.startsWith('Broker MQTT trong máy không chạy'));
+  assert.deepStrictEqual(H({ cmd: 'link', up: false }).events.filter(e => e.event === 'alert'), []);
+  assert.deepStrictEqual(H({ cmd: 'link', up: true }).events.filter(e => e.event !== 'telemetry'), [{ event: 'resolve', key: 'mqtt-down' }]);
+  assert.deepStrictEqual(H({ cmd: 'link', up: true }).events.filter(e => e.event === 'resolve'), []);
+  assert.strictEqual(V.health(st, SITE, now).link, true);
+  // wifi + seenAt + mapAt
+  now += 1000; H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'docked' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '87' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/ips', payload: '["192.168.1.40","fe80::1"]' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/ssid', payload: 'MeKoniq' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/signal', payload: '-58' });
+  let h = V.health(st, SITE, now);
+  assert.deepStrictEqual(h.robots.R1, { topic: 'valetudo/Bot', online: true, status: 'docked', battery: 87, seenAt: now, mapAt: 0, wifi: { ips: ['192.168.1.40', 'fe80::1'], ssid: 'MeKoniq', signal: -58 } });
+  assert.deepStrictEqual(Object.keys(h.robots), ['R1']);
+  // wifi garbage ignored
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/signal', payload: 'abc' });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/ips', payload: '{not json' });
+  assert.deepStrictEqual(V.health(st, SITE, now).robots.R1.wifi, { ips: ['192.168.1.40', 'fe80::1'], ssid: 'MeKoniq', signal: -58 });
+  // survives a rebuild (knob edit)
+  const st2 = V.init({ ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, arriveCm: 50 } }, SITE.robots[1]] }, st);
+  assert.deepStrictEqual(V.health(st2, SITE, now).robots.R1.wifi.ssid, 'MeKoniq');
+  assert.strictEqual(V.health(st2, SITE, now).robots.R1.seenAt, now);
+  console.log('✓ health: link alerts once, wifi facts, garbage ignored, kept across rebuild');
+}
