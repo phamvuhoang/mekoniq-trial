@@ -15,13 +15,13 @@
   .side, .mid { display: flex; flex-direction: column; gap: 10px; min-height: 0; min-width: 0; }
   .side > .eyebrow.sm { margin: 0; }
   .robots { display: grid; gap: 8px; }
-  .rbtn { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 10px; padding: 9px 14px; border: 1.5px solid var(--line); border-radius: 16px; background: #fff; color: var(--ink); text-align: left; line-height: 1.25; }
+  .rbtn { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0 10px; padding: 9px 14px; border: 1.5px solid var(--line); border-radius: 16px; background: var(--card); color: var(--ink); text-align: left; line-height: 1.25; }
   .rbtn i { width: 12px; height: 12px; border-radius: 50%; grid-row: span 2; }
   .rbtn b { font-size: 16px; font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .rbtn .bt { font: 500 13px var(--mono); }
   .rbtn small { grid-column: 2 / -1; font-size: 12px; font-weight: 700; color: var(--gray); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .rbtn[aria-pressed="true"] { background: var(--deep); border-color: var(--deep); color: #fff; }
-  .rbtn[aria-pressed="true"] small { color: #9bb6b0; }
+  .rbtn[aria-pressed="true"] { background: var(--deep); border-color: var(--deep); color: var(--card); }
+  .rbtn[aria-pressed="true"] small { color: inherit; opacity: .7; }
   .queue { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 12px 14px; }
   .queue h3 { margin: 0 0 4px; font-size: 12px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--gray); }
   .queue ol { flex: 1; min-height: 0; overflow: auto; margin: 0; padding: 0; list-style: none; }
@@ -32,26 +32,29 @@
   .queue li small.warn { color: var(--warn-ink); } .queue li small.danger { color: var(--danger); } .queue li small.go { color: var(--green); }
   .queue li > :is(button, .lock) { grid-row: 1 / span 2; grid-column: 2; }
   .queue li .pill { padding: 0 6px; font-size: 11px; vertical-align: 2px; margin-right: 4px; }
-  .queue .x { min-width: 40px; height: 40px; padding: 0 8px; border: 1.5px solid #f0c2c3; border-radius: 12px; background: #fff; color: var(--danger); font-weight: 900; }
-  .queue .x.armed { background: var(--danger); border-color: var(--danger); color: #fff; animation: pulse 1s infinite; }
+  .queue .x { min-width: 40px; height: 40px; padding: 0 8px; border: 1.5px solid color-mix(in srgb, var(--danger) 30%, var(--card)); border-radius: 12px; background: var(--card); color: var(--danger); font-weight: 900; }
+  .queue .x.armed { background: var(--danger); border-color: var(--danger); color: var(--card); animation: pulse 1s infinite; }
   .queue .lock { font-size: 18px; }
   .queue .empty { padding: 20px 0; }
 
   .tasks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-  .task { min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1.5px solid var(--line); border-radius: 16px; background: #fff; color: var(--deep); line-height: 1.15; }
+  .task { min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1.5px solid var(--line); border-radius: 16px; background: var(--card); color: var(--deep); line-height: 1.15; }
   .task b { font-size: 18px; font-weight: 900; } .task small { font-size: 12px; font-weight: 700; opacity: .65; }
-  .task[aria-pressed="true"] { background: var(--deep); border-color: var(--deep); color: #fff; }
+  .task[aria-pressed="true"] { background: var(--deep); border-color: var(--deep); color: var(--card); }
   .pickrow { display: flex; align-items: center; gap: 8px; min-height: 42px; white-space: nowrap; }
   .pickrow .lbl { font-size: 12px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--gray); }
   .pickrow .txt { font-weight: 800; color: var(--ink); }
   .pickrow .cnt { margin-left: auto; font: 500 14px var(--mono); color: var(--gray); }
-  .chip { min-height: 40px; padding: 7px 16px; border: 1.5px solid var(--line); border-radius: 999px; background: #fff; font-weight: 800; white-space: nowrap; }
-  .chip[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: #fff; }
+  .chip { min-height: 40px; padding: 7px 16px; border: 1.5px solid var(--line); border-radius: 999px; background: var(--card); font-weight: 800; white-space: nowrap; }
+  .chip[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: var(--card); }
   #grid { --cols: 4; flex: 1; }
   .tt.spot b { font-size: 22px; padding: 4px 0; }
 
   .pv { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow: hidden; }
   #pvHead, #pvOpts { display: flex; flex-direction: column; gap: 8px; }
+  /* Alert strips eat height: the notes area shrinks and scrolls, the send buttons always stay whole. */
+  #pvHead { flex: none; }
+  #pvOpts { flex: 0 1 auto; min-height: 0; overflow: auto; }
   .pv .eyebrow.sm { margin: 0; }
   .pv h2 { margin: 0; font-size: 22px; font-weight: 900; line-height: 1.2; color: var(--deep); overflow-wrap: anywhere; }
   .pv .rl { margin: 0; font-weight: 700; color: var(--gray); }
@@ -68,14 +71,13 @@
   .urg { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 14px; line-height: 1.2; cursor: pointer; }
   .urg input { width: 22px; height: 22px; flex: none; accent-color: var(--warn); }
   .urg b { display: block; font-weight: 900; } .urg small { font-size: 12px; color: var(--gray); font-weight: 700; }
-  .urg:has(input:checked) { border-color: var(--accent); background: #fff4ec; }
-  #pvSend { margin-top: auto; display: grid; gap: 8px; }
+  .urg:has(input:checked) { border-color: var(--accent); background: var(--pill-warn); }
+  #pvSend { flex: none; margin-top: auto; display: grid; gap: 8px; }
   #pvSend .send { --act-h: 104px; }
   #pvSend .act.outline { --act-h: 52px; }
   #pvSend .act.outline b { font-size: 16px; }
-  .pv .lockmsg { margin: 0; padding: 14px; border-radius: 16px; background: var(--light); font-weight: 700; }
 
-  footer.kpis { display: block; flex: none; margin: 0; padding: 10px 16px; background: #fff; border-top: 1px solid var(--line); font-size: 14px; color: var(--gray); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  footer.kpis { display: block; flex: none; margin: 0; padding: 10px 16px; background: var(--card); border-top: 1px solid var(--line); font-size: 14px; color: var(--gray); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   footer.kpis b { color: var(--deep); font-weight: 900; }
 
   @media (orientation: portrait), (max-width: 900px) {
@@ -362,8 +364,8 @@ function renderDesk() {
     setHTML($('pvHead'), `<p class="eyebrow sm">Lệnh gần nhất của trạm này</p>` + (tgt
       ? `<h2>${esc(tgt.label)}</h2><p class="rl">Robot: ${tgt.robot || '—'}<span class="pill ${c}">${esc(t)}</span></p>`
       : '<h2 class="muted">Không có lệnh để thu hồi</h2>') + '<p class="rl small">Chọn trên lưới để tạo lệnh mới.</p>');
+    // cancelTarget() skips locked missions (their 🔒 shows in the queue), so a target here is arrived or cancellable.
     setHTML($('pvSend'), !tgt ? '' : arrived(tgt) ? receiveBtn(tgt, 'act primary send')
-      : locked(tgt) ? `<p class="lockmsg">🔒 ${backStop(tgt) ? 'Robot đang mang đồ về — chờ nhận lại, không thu hồi được.' : 'Robot đang chở chén bẩn — không thu hồi được.'}</p>`
       : `<button class="act danger send ${isArmed(k) ? 'armed' : ''}" data-act="cancel" data-m="${tgt.id}">${isArmed(k) ? L('Chạm lần nữa để thu hồi', 'Tap again to confirm') : L('Thu hồi robot', 'Recall')}</button>`);
   }
 
