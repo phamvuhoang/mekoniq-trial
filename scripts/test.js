@@ -460,7 +460,7 @@ scenario('đổi bàn khi robot đang đi: tới bàn mới, không về bếp',
   assert.strictEqual(R('R1').target, 'T03');
   assert.strictEqual(M(id).label, `#${id} Giao Bếp → Bàn 03, 09`);
   assert.strictEqual(st.kpi.cancelledStaff, staff);
-  assert.ok(events.some(e => e.table === 'T05') && events.some(e => e.table === 'T03'));
+  assert.ok(events.some(e => e.table === 'T05' && e.moved === 'T03') && events.some(e => e.table === 'T03'));
   assert.ok(!events.some(e => e.robotSound || e.stationSound), 'no sounds');
   until('T03', atStop('R1', 'handoff', 'T03'));
   assert.deepStrictEqual(reply(H({ stop: 1, to: 'T08' })), ['Không đổi được: robot đã tới bàn']);
@@ -613,6 +613,12 @@ scenario('review: cảnh báo khách không đẩy mất cảnh báo dừng kh�
   for (let i = 0; i < 25; i++) send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }, { id: 'trada', qty: 1 }] });
   assert.ok(st.alerts.some(a => a.key === 'es-R1'), 'e-stop alert kept');
   assert.ok(st.alerts.length <= 20);
+});
+
+scenario('review: 20 cảnh báo lỗi -> cảnh báo khách mới bị bỏ, không xoá lỗi', () => {
+  for (let i = 0; i < 20; i++) pump({ source: 'adapter', data: { event: 'alert', key: 'err-' + i, level: 'error', text: 'lỗi ' + i } });
+  send({ type: 'call', point: 'T05', what: 'staff' });
+  assert.deepStrictEqual(st.alerts.map(a => a.key).sort(), Array.from({ length: 20 }, (_, i) => 'err-' + i).sort());
 });
 
 scenario('review: Đã biết hoá đơn / chuyển khoản -> đóng đơn của bàn', () => {

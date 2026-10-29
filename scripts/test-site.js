@@ -119,6 +119,15 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   console.log('✓ menu validated');
 }
 {
+  // Review: a site whose stations are not called "kitchen" must not silently route orders to a missing point.
+  const s = clone(seed); const { kitchen, ...rest } = s.points; s.points = { bep: kitchen, ...rest };
+  s.menu = { cats: [{ id: 'mon', vi: 'Món' }], items: [] };
+  assert.strictEqual(S.firstStation(s), 'bep');
+  assert.strictEqual(S.normalize(s, seed).site.menu.cats[0].station, 'bep');
+  has(errs(x => { x.points.bep = x.points.kitchen; delete x.points.kitchen; x.menu = { cats: [{ id: 'a', vi: 'A', station: 'kitchen' }], items: [] }; }), 'kitchen');
+  console.log('✓ category station defaults to the first station point');
+}
+{
   const s = clone(seed); delete s.payment;
   assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: '', account: '', name: '' });
   s.payment = { bank: ' VCB ', account: '0123 456 789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA' };
