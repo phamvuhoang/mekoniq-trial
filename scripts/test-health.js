@@ -17,6 +17,10 @@ console.log('✓ ip null');
 h = H.build({ ...base, ip: '192.168.1.23', lastIp: undefined });
 assert.strictEqual(h.server.ipChanged, null); assert.strictEqual(h.server.firstRun, true);
 console.log('✓ first run');
+h = H.build({ ...base, ip: '192.168.1.23', lastIp: '192.168.1.23', firstRun: true });
+assert.strictEqual(h.server.firstRun, true);                                     // caller keeps it until restart
+assert.strictEqual(H.build({ ...base, ip: null, lastIp: '192.168.1.23', firstRun: true }).server.firstRun, false);
+console.log('✓ first run kept');
 h = H.build({ ...base, clients: undefined, link: undefined });
 assert.strictEqual(h.mqtt.clients, null); assert.strictEqual(h.mqtt.link, false);
 console.log('✓ missing broker facts');
@@ -34,6 +38,8 @@ console.log('✓ no password field');
   assert.deepStrictEqual(ev(OK, OK), []);
   assert.deepStrictEqual(ev(undefined, OK), ['resolve']);                // restart: an alert saved on disk may be stale
   assert.deepStrictEqual(ev(undefined, A), ['resolve', 'alert:10.0.0.2']);  // and the saved text is replaced
+  const NONE = at(null, '10.0.0.1');
+  assert.deepStrictEqual(ev(A, NONE), []);                                     // Wi-Fi lost: the alert stays as it is
   console.log('✓ ipEvents transitions');
 }
 // connect() fails (no route): the error goes to the callback and the socket reads 0.0.0.0 — must be null
@@ -44,7 +50,15 @@ console.log('✓ no password field');
   H.localIp(ip => {
     assert.strictEqual(ip, null); console.log('✓ localIp no route → null');
     dgram.createSocket = fake(null, '0.0.0.0');
-    H.localIp(ip => { assert.strictEqual(ip, null); console.log('✓ localIp unbound 0.0.0.0 → null'); dgram.createSocket = real; probe(); });
+    H.localIp(ip => {
+      assert.strictEqual(ip, null); console.log('✓ localIp unbound 0.0.0.0 → null');
+      const ips = ['10.1.2.3', '172.20.0.1', '192.168.1.5', '100.64.1.2', '8.8.8.8', '172.32.0.1'], got = [];
+      const next = () => {
+        if (got.length === ips.length) { assert.deepStrictEqual(got, ['10.1.2.3', '172.20.0.1', '192.168.1.5', null, null, null]); console.log('✓ localIp private LAN only'); dgram.createSocket = real; return probe(); }
+        dgram.createSocket = fake(null, ips[got.length]); H.localIp(ip => { got.push(ip); next(); });
+      };
+      next();
+    });
   });
 }
 function probe() { H.localIp(ip => { assert.ok(ip === null || /^\d+\.\d+\.\d+\.\d+$/.test(ip)); console.log('✓ localIp', ip); finished = true; console.log('OK — health'); }); }

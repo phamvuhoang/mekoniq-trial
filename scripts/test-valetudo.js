@@ -523,14 +523,21 @@ const PTS = SITE.robots[0].valetudo.points;
 {
   const st = V.init(SITE); let now = 1e12;
   const H = (i) => V.handle(st, SITE, i, now);
-  // link alert once per transition
-  let ev = H({ cmd: 'link', up: false }).events.filter(e => e.event !== 'telemetry');
-  assert.deepStrictEqual(ev.map(e => [e.event, e.key, e.level]), [['alert', 'mqtt-down', 'error']]);
-  assert.ok(ev[0].text.startsWith('Broker MQTT trong máy không chạy'));
-  assert.deepStrictEqual(H({ cmd: 'link', up: false }).events.filter(e => e.event === 'alert'), []);
-  assert.deepStrictEqual(H({ cmd: 'link', up: true }).events.filter(e => e.event !== 'telemetry'), [{ event: 'resolve', key: 'mqtt-down' }]);
-  assert.deepStrictEqual(H({ cmd: 'link', up: true }).events.filter(e => e.event === 'resolve'), []);
-  assert.strictEqual(V.health(st, SITE, now).link, true);
+  // link: down only counts after 5 s (Node-RED reports 'connecting' at every start / deploy); one alert, one resolve
+  const ev = r => r.events.filter(e => e.event !== 'telemetry');
+  assert.deepStrictEqual(ev(H({ cmd: 'link', up: false })), []);                    // boot: connecting…
+  now += 100; assert.deepStrictEqual(ev(H({ cmd: 'link', up: true })), []);         // …connected: no flash
+  now += 1000; assert.deepStrictEqual(ev(H({ cmd: 'tick' })), []);
+  H({ cmd: 'link', up: false }); assert.strictEqual(V.health(st).link, false);
+  now += 4000; assert.deepStrictEqual(ev(H({ cmd: 'tick' })), []);
+  H({ cmd: 'link', up: false });                                                   // reconnect attempts keep the first down time
+  now += 1000; let a = ev(H({ cmd: 'tick' }));
+  assert.deepStrictEqual(a.map(e => [e.event, e.key, e.level]), [['alert', 'mqtt-down', 'error']]);
+  assert.ok(a[0].text.startsWith('Broker MQTT trong máy không chạy'));
+  now += 5000; assert.deepStrictEqual(ev(H({ cmd: 'tick' })), []);                 // once
+  assert.deepStrictEqual(ev(H({ cmd: 'link', up: true })), [{ event: 'resolve', key: 'mqtt-down' }]);
+  assert.deepStrictEqual(ev(H({ cmd: 'link', up: true })), []);
+  assert.strictEqual(V.health(st).link, true);
   // wifi + seenAt + mapAt
   now += 1000; H({ cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'docked' });
@@ -538,25 +545,34 @@ const PTS = SITE.robots[0].valetudo.points;
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/ips', payload: '["192.168.1.40","fe80::1"]' });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/ssid', payload: 'MeKoniq' });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/signal', payload: '-58' });
-  let h = V.health(st, SITE, now);
+  let h = V.health(st);
   assert.deepStrictEqual(h.robots.R1, { topic: 'valetudo/Bot', online: true, status: 'docked', battery: 87, seenAt: now, mapAt: 0, wifi: { ips: ['192.168.1.40', 'fe80::1'], ssid: 'MeKoniq', signal: -58 } });
   assert.deepStrictEqual(Object.keys(h.robots), ['R1']);
   // wifi garbage ignored
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/signal', payload: 'abc' });
   H({ cmd: 'mqtt', topic: 'valetudo/Bot/WifiConfigurationCapability/ips', payload: '{not json' });
-  assert.deepStrictEqual(V.health(st, SITE, now).robots.R1.wifi, { ips: ['192.168.1.40', 'fe80::1'], ssid: 'MeKoniq', signal: -58 });
+  assert.deepStrictEqual(V.health(st).robots.R1.wifi, { ips: ['192.168.1.40', 'fe80::1'], ssid: 'MeKoniq', signal: -58 });
   // survives a rebuild (knob edit)
   const st2 = V.init({ ...SITE, robots: [{ ...SITE.robots[0], valetudo: { ...SITE.robots[0].valetudo, arriveCm: 50 } }, SITE.robots[1]] }, st);
-  assert.deepStrictEqual(V.health(st2, SITE, now).robots.R1.wifi.ssid, 'MeKoniq');
-  assert.strictEqual(V.health(st2, SITE, now).robots.R1.seenAt, now);
+  assert.deepStrictEqual(V.health(st2).robots.R1.wifi.ssid, 'MeKoniq');
+  assert.strictEqual(V.health(st2).robots.R1.seenAt, now);
   console.log('✓ health: link alerts once, wifi facts, garbage ignored, kept across rebuild');
 }
 {
   const st = V.init(SITE);   // state saved by an older adapter (flow context on disk) has no seenAt / mapAt / wifi
   for (const k of ['seenAt', 'mapAt', 'wifi']) delete st.robots.R1[k];
   delete st.link;
-  const h = V.health(st, SITE, 1e12);
+  const h = V.health(st);
   assert.strictEqual(h.link, true);
   assert.deepStrictEqual([h.robots.R1.seenAt, h.robots.R1.mapAt, h.robots.R1.wifi], [0, 0, null]);
   console.log('✓ health: state saved before the health fields existed');
+}
+{
+  const st = V.init(SITE); let now = 1e12;
+  V.handle(st, SITE, { cmd: 'mqtt', topic: 'valetudo/Bot/$state', payload: 'ready' }, now);
+  now += 60000;   // Node-RED restarted: the broker redelivers what the robot left behind hours ago
+  V.handle(st, SITE, { cmd: 'mqtt', topic: 'valetudo/Bot/BatteryStateAttribute/level', payload: '50', retain: true }, now);
+  assert.strictEqual(V.health(st).robots.R1.seenAt, 1e12);
+  assert.strictEqual(V.health(st).robots.R1.battery, 50);                         // still ingested
+  console.log('✓ health: retained redelivery does not count as heard from');
 }

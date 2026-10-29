@@ -75,7 +75,7 @@ function parseMapData(payload) {
 const parseMap = payload => parseMapData(payload).pos;
 
 const MOVING = ['moving', 'returning'], STOPPED = ['idle', 'docked', 'error', 'paused'];
-const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000, SLOW_RETRY = 4;
+const STALE_MS = 1500, STOP_WAIT_MS = 3000, POS_WAIT_MS = 5000, SLOW_RETRY = 4, LINK_GRACE_MS = 5000;
 const MQTT_DOWN_TEXT = 'Broker MQTT trong máy không chạy — robot thật không điều khiển được. Mở Termux, chạy lại install hoặc mosquitto -c ~/robot/mosquitto.conf -d';
 // Per-robot knobs in robots[].valetudo (defaults in lib/site.js KNOBS): arriveCm, nomoveSec, tripSec,
 // retrySec, retryMax, stuckSec, progressCm, acceptCm, retryErr.
@@ -94,7 +94,8 @@ const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id
 const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'stateSeen', 'mapMeta', 'seenAt', 'mapAt', 'wifi'];
 const TRIP = ['goal', 'pending', 'pendingSince', 'sentAt', 'seenMoving', 'checkUntil', 'paused', 'blocked', 'why', 'waiting', 'tries', 'retryAt', 'lastPos', 'progressAt', 'waitPos'];
 function init(site, old) {
-  const st = { key: robotsKey(site), boot: BOOT, link: old && old.link !== undefined ? old.link : true, robots: {} };
+  const st = { key: robotsKey(site), boot: BOOT, link: old && old.link !== undefined ? old.link : true,
+    downSince: (old && old.downSince) || 0, linkAlert: old ? old.linkAlert ?? old.link === false : false, robots: {} };
   for (const r of site.robots) {
     if (r.driver !== 'valetudo') continue;
     if (!ours(r)) { console.warn(`[valetudo] ${r.id}: thiếu "valetudo": { "topic": "<prefix>/<identifier>" } trong site.json — bỏ qua robot này`); continue; }
@@ -197,7 +198,7 @@ function handle(st, site, input, now) {
     const fresh = init(site, st); for (const k of Object.keys(st)) delete st[k]; Object.assign(st, fresh);
     for (const [rid, r] of Object.entries(st.robots)) if (r.retaught) { delete r.retaught; if (!r.paused && !r.pending && r.why !== 'noroute') { r.waiting = false; start(rid, r, now, events, mqtt); } }
   }
-  if (st.boot !== BOOT) { st.boot = BOOT; for (const r of Object.values(st.robots)) r.online = false; }
+  if (st.boot !== BOOT) { st.boot = BOOT; st.link = true; st.downSince = 0; for (const r of Object.values(st.robots)) r.online = false; }   // link: the MQTT node reports at start
   const b = st.robots[id];
   switch (input.cmd) {
     case 'goto': {
@@ -234,14 +235,17 @@ function handle(st, site, input, now) {
       }
       break;
     case 'mqtt': ingest(st, input, now, events, mqtt, maps); break;
-    case 'link': {   // broker connection lost / back: one alert per transition, the station shows the real cause
+    case 'link': {   // broker connection lost / back. The alert waits LINK_GRACE_MS (tick): every start reports 'connecting' first.
       const up = !!input.up;
-      if (up !== st.link) events.push(up ? { event: 'resolve', key: 'mqtt-down' } : { event: 'alert', key: 'mqtt-down', level: 'error', text: MQTT_DOWN_TEXT });
+      if (up) { if (st.linkAlert) events.push({ event: 'resolve', key: 'mqtt-down' }); st.linkAlert = false; st.downSince = 0; }
+      else { if (!st.downSince) st.downSince = now; for (const r of Object.values(st.robots)) r.online = false; }
       st.link = up;
-      if (!up) for (const r of Object.values(st.robots)) r.online = false;
       break;
     }
     case 'tick':
+      if (!st.link && !st.linkAlert && st.downSince && now - st.downSince >= LINK_GRACE_MS) {   // one alert per outage
+        st.linkAlert = true; events.push({ event: 'alert', key: 'mqtt-down', level: 'error', text: MQTT_DOWN_TEXT });
+      }
       for (const [rid, r] of Object.entries(st.robots)) {
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
         if (!r.goal || r.paused || r.pending) continue;
@@ -277,7 +281,7 @@ function ingest(st, input, now, events, mqtt, maps) {
   for (const [id, b] of Object.entries(st.robots)) {
     if (!input.topic.startsWith(b.topic + '/')) continue;
     const key = input.topic.slice(b.topic.length + 1), v = String(input.payload);
-    b.seenAt = now;
+    if (!input.retain) b.seenAt = now;   // retained = redelivered on (re)subscribe, not heard from now
     if (key === '$state') { b.online = v === 'ready'; b.stateSeen = true; }
     else if (!b.stateSeen) b.online = true;   // $state is only (re)sent on connect; a robot configured after the subscription never gets it
     if (key === '$state') continue;
@@ -334,7 +338,7 @@ function wifi(b, k, v) {
 }
 
 // GET /api/health: what each real robot last told us (lib/health.js wraps it).
-function health(st, site, now) {
+function health(st) {
   const robots = {};
   for (const [id, b] of Object.entries(st.robots))
     robots[id] = { topic: b.topic, online: b.online, status: b.status, battery: b.battery, seenAt: b.seenAt || 0, mapAt: b.mapAt || 0, wifi: b.wifi || null };
