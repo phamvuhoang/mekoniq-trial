@@ -15,9 +15,9 @@ function localIp(cb) {
   const s = dgram.createSocket('udp4');
   const end = (ip) => { if (done) return; done = true; try { s.close(); } catch (e) {} cb(ip); };
   s.on('error', () => end(null));
-  try {
-    s.connect(9, '10.255.255.255', () => { try { end(s.address().address || null); } catch (e) { end(null); } });
-  } catch (e) { end(null); }
+  // No route: connect() hands the error to its callback, and the implicitly bound socket then reads 0.0.0.0.
+  const addr = () => { try { const a = s.address().address; return a && a !== '0.0.0.0' ? a : null; } catch (e) { return null; } };
+  try { s.connect(9, '10.255.255.255', err => end(err ? null : addr())); } catch (e) { end(null); }
 }
 
 function build({ ip, lastIp, link, clients, robots, now, started = STARTED }) {
@@ -32,4 +32,16 @@ function build({ ip, lastIp, link, clients, robots, now, started = STARTED }) {
   };
 }
 
-module.exports = { localIp, build, MQTT_USER, PORT };
+// Health node: adapter events for the station's 'ip-changed' alert, from the previous report (undefined after a restart)
+// to this one. A restart resolves (the alert saved on disk may be stale; a resolve with no alert is a no-op); a second
+// change before the ack re-raises it, so the station never shows an old IP.
+const ipKey = h => (h && h.server.ipChanged ? h.server.ipChanged.from + '>' + h.server.ipChanged.to : '');
+function ipEvents(prev, h) {
+  const c = h.server.ipChanged, was = prev ? ipKey(prev) : null;
+  if (was === ipKey(h)) return [];
+  const out = was === '' ? [] : [{ event: 'resolve', key: 'ip-changed' }];
+  if (c) out.push({ event: 'alert', key: 'ip-changed', level: 'error', text: `IP điện thoại đã đổi từ ${c.from} sang ${c.to} — robot và mã QR vẫn trỏ về ${c.from}. Trang Cấu hình → Hệ thống` });
+  return out;
+}
+
+module.exports = { localIp, build, ipEvents, MQTT_USER, PORT };
