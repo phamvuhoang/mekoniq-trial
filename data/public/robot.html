@@ -106,6 +106,15 @@
   .mi .q button.plus { background: var(--mint); border-color: var(--mint); }
   .mi .q span { min-width: 22px; text-align: center; font-size: 18px; font-weight: 900; }
 
+  /* Pay: bill | QR */
+  .pay { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: center; }
+  .bill table { width: 100%; border-collapse: collapse; font-size: 18px; }
+  .bill td { padding: 8px 0; border-bottom: 1px solid var(--line); } .bill td + td { text-align: right; font-family: var(--mono); }
+  .bill tr.tot td { border: 0; font-size: 24px; font-weight: 900; }
+  .qr { display: grid; gap: 10px; justify-items: center; text-align: center; }
+  .qr img { width: 100%; max-width: 300px; border-radius: 18px; background: #fff; }
+  .qr .acct { font-size: 18px; font-weight: 800; } .qr .amt { font-size: 32px; font-weight: 900; }
+
   /* Standby at a station: choose task, choose tables */
   .load { height: 100%; display: flex; flex-direction: column; gap: 14px; }
   .step { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -136,7 +145,9 @@
     .moving { grid-template-columns: minmax(0, 1fr); align-content: center; }
     .dest { font-size: 96px; font-size: min(96px, 100cqw / (var(--n) * .64)); }
     .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .pay { grid-template-columns: minmax(0, 1fr); align-content: center; }
   }
+  :root[data-orient=portrait] .pay { grid-template-columns: minmax(0, 1fr); align-content: center; }
   :root[data-orient=portrait] .menu-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   :root[data-orient=portrait] .screen > .body { grid-template: minmax(0, 1fr) auto / minmax(0, 1fr); }
   :root[data-orient=portrait] #acts { flex-direction: row; flex-wrap: wrap; border-left: 0; border-top: 1px solid var(--line); padding: 16px; }
@@ -204,6 +215,7 @@ function face(mood, move) {
 $('startFace').innerHTML = face('happy');
 
 let guiding = false, gpick = null, g0 = {};   // guide: choosing the guests' table; longest route seen per mission (progress bar)
+let paying = false;   // pay screen open
 let ordering = false, cart = {}, ocat = null, otable = null;   // order food: open, qty per item id, category tab, table picked (robot not at one)
 let pick = [], mode = 'deliver';   // tables chosen while on standby at a station; deliver | bus (one table)
 const act = (cls, vi, en, dataAct, extra = '') => `<button class="act ${cls}" data-act="${dataAct}" ${extra}>${L(vi, en)}</button>`;
@@ -269,6 +281,30 @@ function orderView(r) {
       + act('primary', n ? `Gửi bếp ${n} món` : 'Chưa chọn món', n ? 'Send to kitchen' : 'Nothing yet', 'orderSend', n ? '' : 'disabled')
       + act('outline', 'Quay lại', 'Back', 'orderBack') };
 }
+// Pay at the table (spec 6.4): bill = this table's orders not yet reported paid. Needs features.call to reach staff.
+const bill = t => ((App.state && App.state.orders) || []).filter(o => o.table === t && o.status === 'new');
+const canPay = r => feat('pay') && feat('call') && !r.halt && !r.offline && !!hereTable(r) && bill(hereTable(r)).length > 0;
+const payBtn = r => canPay(r) ? act('outline', 'Thanh toán', 'Pay the bill', 'pay') : '';
+function payView(r) {
+  const t = hereTable(r), orders = bill(t), M = menu(), P = App.site.payment || {};
+  const lines = {};
+  for (const o of orders) for (const i of o.items) { const l = lines[i.id] = lines[i.id] || { qty: 0, sum: 0 }; l.qty += i.qty; l.sum += i.qty * i.price; }
+  const total = orders.reduce((a, o) => a + o.total, 0), name = id => (M.items.find(i => i.id === id) || { vi: id }).vi;
+  const info2 = `Ban ${short(t)}`;
+  const qr = navigator.onLine && P.bank && P.account
+    ? `<img src="https://img.vietqr.io/image/${encodeURIComponent(P.bank)}-${encodeURIComponent(P.account)}-compact2.png?amount=${total}&addInfo=${encodeURIComponent(info2)}&accountName=${encodeURIComponent(P.name || '')}" alt="Mã VietQR">`
+    : P.qr ? `<img src="${esc(P.qr)}" alt="Mã QR chuyển khoản">` : '';
+  return { bar: `${pname(t)} · Thanh toán`, sub: 'Pay the bill', tone: 'go',
+    body: `<div class="pay"><div class="card bill"><p class="eyebrow">Hoá đơn · Bill — ${esc(pname(t))}</p><table>
+      ${Object.entries(lines).map(([id, l]) => `<tr><td>${esc(name(id))} ×${l.qty}</td><td>${vnd(l.sum)}</td></tr>`).join('')}
+      <tr class="tot"><td>Tổng · Total</td><td>${vnd(total)}</td></tr></table></div>
+      <div class="qr">${qr}<div class="amt">${vnd(total)}</div>
+        <div class="acct">${P.account ? `${esc(P.bank)} · ${esc(P.account)}${P.name ? ' · ' + esc(P.name) : ''}` : 'Vui lòng thanh toán với nhân viên · Please pay staff'}</div>
+        <small class="muted">Nội dung · Note: ${esc(info2)}</small></div></div>`,
+    acts: act('primary', 'Tôi đã chuyển khoản', "I've paid", 'paid', `data-amt="${total}"`)
+      + act('outline', 'Tiền mặt / thẻ', 'Cash or card · call staff', 'call', `data-p="${esc(t)}"`)
+      + act('outline', 'Quay lại', 'Back', 'payBack') };
+}
 // Call staff to a table (spec 6.1): needs features.call.
 const callBtn = t => feat('call') && t ? act('outline', 'Gọi nhân viên', 'Call staff', 'call', `data-p="${esc(t)}"`) : '';
 
@@ -307,6 +343,7 @@ function view(r, m) {
     body: split(face('sad'), 'Mất kết nối · Offline', 'Mất kết nối robot.', 'Robot connection lost.', '<p class="lead">Đang chờ robot kết nối lại hệ thống…</p>'),
     acts: info('Mất kết nối', 'Đang chờ robot kết nối lại · Waiting for the robot to reconnect') };
 
+  if (paying && canPay(r)) return payView(r);
   if (ordering && canOrder(r)) return orderView(r);
   if (guiding && canGuide(r, m)) return { bar: 'Dẫn khách · Chọn bàn', sub: 'Guide · Choose a table', tone: 'go',
     body: `<div class="load"><div class="step"><h2>Quý khách ngồi bàn nào? <small>Which table are you seated at?</small></h2></div>
@@ -322,7 +359,7 @@ function view(r, m) {
       body: split(trays([s.tray], trayLabels(m)), `${esc(place)} · Đã tới`, `Mời quý khách lấy món ở Khay ${s.tray}`, `Please take your order from Tray ${s.tray}`,
         `${m.note ? `<div class="card note"><small>Ghi chú · Note</small>${esc(m.note)}</div>` : ''}<p class="lead" id="timer"></p>${batChip(r)}`, 'hand'),
       acts: act('primary', 'Đã nhận món', 'Got it, thanks', 'confirm')
-        + armAct('cx', 'warn', ['Trả lại bếp', 'Not mine, send back'], ['Chạm lần nữa · robot mang món về', 'Tap again to send it back'], 'cancelStop') + orderBtn(r) + callBtn(s.p) };
+        + armAct('cx', 'warn', ['Trả lại bếp', 'Not mine, send back'], ['Chạm lần nữa · robot mang món về', 'Tap again to send it back'], 'cancelStop') + orderBtn(r) + payBtn(r) + callBtn(s.p) };
     if (s.a === 'load') {
       const open = m.stops.filter(x => x.a === 'handoff' && !isOff(x)).map(x => x.tray);
       return { bar: `${place} · Xếp món lên khay`, sub: 'Load the trays', tone: 'go',
@@ -348,7 +385,7 @@ function view(r, m) {
       const toDish = s.p !== App.site.dishPoint && act('outline', 'Mang chén về khu rửa', 'Take dishes to wash', 'toDish');
       if (App.site.points[s.p].kind !== 'station') return { bar: `${place} · Chờ lệnh`, sub: 'Standby', tone: 'go',
         body: split(face('wait'), `${esc(place)} · Chờ lệnh`, 'Robot đang chờ.', 'Robot is waiting.', `<p class="lead">Gọi bởi ${esc(m.by)}</p>`),
-        acts: guideBtn(r, m) + orderBtn(r) + (toDish || '') + act('primary', 'Xong · Cho robot về', 'Done · Send robot back', 'release') };
+        acts: guideBtn(r, m) + orderBtn(r) + payBtn(r) + (toDish || '') + act('primary', 'Xong · Cho robot về', 'Done · Send robot back', 'release') };
       const tables = Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
       return { bar: `${place} · Chờ lệnh`, sub: 'Choose tables', tone: 'go',
         body: `<div class="load"><p class="eyebrow">Gọi bởi ${esc(m.by)}</p>
@@ -422,6 +459,7 @@ function render() {
   if (!(r && r.phase === 'atStop' && m && m.stops[m.cur].a === 'standby')) { pick = []; mode = 'deliver'; }
   if (!r || !canGuide(r, m)) { guiding = false; gpick = null; }
   if (!r || !canOrder(r)) { ordering = false; cart = {}; otable = null; }
+  if (!r || !canPay(r)) paying = false;
   if (r && m && m.kind === 'guide' && r.phase === 'toStop') g0[m.id] = Math.max(g0[m.id] || 0, r.rem || 0);
   const v = view(r, m);
   document.body.className = 't-' + v.tone;
@@ -486,6 +524,13 @@ $('main').addEventListener('click', e => {
   if (a === 'unpick') { pick = []; render(); }
   if (a === 'toDish') send({ type: 'dispatch', ...base, mission: m.id, toDish: true });
   if (a === 'release') send({ type: 'dispatch', ...base, mission: m.id, release: true });
+  if (a === 'pay') { paying = true; render(); }
+  if (a === 'payBack') { paying = false; render(); }
+  if (a === 'paid') {
+    const t = hereTable(r);
+    send({ type: 'call', point: t, what: 'paid', amount: +b.dataset.amt, by: 'Khách ' + pname(t) + ' (màn ' + ID + ')' });
+    toast('Cảm ơn quý khách! Nhân viên sẽ xác nhận · Thank you!'); paying = false; render();
+  }
   if (a === 'order') { ordering = true; cart = {}; otable = null; render(); }
   if (a === 'orderBack') { ordering = false; render(); }
   if (a === 'orderSend') {

@@ -684,5 +684,10 @@
         "price": 25000
       }
     ]
+  },
+  "payment": {
+    "bank": "VCB",
+    "account": "0000000000",
+    "name": "MEKONIQ DEMO"
   }
 }

@@ -103,6 +103,8 @@
   .mtab input, .mtab select { width: 100%; min-width: 0; }
   .mtab input.id { font-family: var(--mono); max-width: 110px; } .mtab input[type=number] { max-width: 110px; }
   .feat { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  #payment label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+  #payment img { max-width: 160px; border-radius: 12px; border: 1px solid var(--line); }
   .feat:first-of-type { border-top: 0; } .feat div { flex: 1; } .feat small { display: block; color: var(--muted); font-size: 12px; }
   .backup { width: min(640px, 100%); display: grid; gap: 14px; padding: 24px; }
   .backup h2 { margin: 0; font-size: 26px; font-weight: 900; }
@@ -203,7 +205,9 @@
     </section>
     <section id="tab-guest" class="tab" hidden>
       <div class="card col"><p class="eyebrow sm">Thực đơn · gọi món trên robot</p><div id="menu"></div></div>
-      <div class="col"><div class="card"><p class="eyebrow sm">Tính năng cho khách</p><div id="features"></div></div></div>
+      <div class="col"><div class="card"><p class="eyebrow sm">Tính năng cho khách</p><div id="features"></div></div>
+        <div class="card col"><p class="eyebrow sm">Thanh toán · chuyển khoản VietQR</p><div class="col" id="payment"></div>
+          <label class="btn sm">Tải ảnh QR tĩnh (khi không có Internet)<input type="file" id="qrUpload" accept="image/png,image/jpeg,image/webp" hidden></label></div></div>
     </section>
     <section id="tab-backup" class="tab" hidden><div class="card backup">
       <p class="eyebrow sm" style="margin:0">Sao lưu</p>
@@ -481,12 +485,16 @@ $('roles').addEventListener('click', e => {
 
 // ---- Guest features: flags, menu ----
 const FEAT = { call: ['Gọi nhân viên / hoá đơn', 'Nút trên trang QR và màn robot'], guide: ['Dẫn khách tới bàn', 'Robot chờ ở trạm/cửa đón dẫn khách, có đi chậm'],
-  order: ['Gọi món trên robot', 'Cần thực đơn bên trái; bếp/quầy nhận cảnh báo'], pay: ['Thanh toán VietQR', 'Cần tài khoản ngân hàng'] };
+  order: ['Gọi món trên robot', 'Cần thực đơn bên trái; bếp/quầy nhận cảnh báo'], pay: ['Thanh toán VietQR', 'Cần tài khoản ngân hàng bên dưới và bật “Gọi nhân viên”'] };
 function renderGuest() {
   D.features = D.features || {};
   D.menu = D.menu || { cats: [], items: [] };
   setHTML($('features'), Object.entries(FEAT).map(([k, [t, sub]]) => `<label class="feat"><div><b>${t}</b><small>${sub}</small></div>
     <input type="checkbox" data-feat="${k}" ${D.features[k] ? 'checked' : ''}></label>`).join(''));
+  const P = D.payment = D.payment || { bank: '', account: '', name: '' };
+  setHTML($('payment'), [['bank', 'Mã ngân hàng (VCB, TCB, MB…)'], ['account', 'Số tài khoản'], ['name', 'Tên chủ tài khoản']].map(([k, t]) =>
+    `<label>${t}<input type="text" data-pay="${k}" value="${esc(P[k] || '')}"${k === 'account' ? ' inputmode="numeric"' : ''}></label>`).join('') +
+    (P.qr ? `<div class="nrow"><img src="${esc(P.qr)}" alt="QR tĩnh"><button class="btn sm" id="qrDel">Xoá ảnh QR</button></div>` : ''));
   const M = D.menu, stations = Object.keys(D.points).filter(k => D.points[k].kind === 'station');
   const inp = (path, v, cls = '', type = 'text') => `<input type="${type}" class="${cls}" data-m="${path}" value="${esc(v ?? '')}">`;
   setHTML($('menu'), `<table class="mtab"><tr class="muted small"><td>Mã</td><td>Danh mục</td><td>English</td><td>Trạm làm</td><td></td></tr>
@@ -504,19 +512,30 @@ function renderGuest() {
 $('tab-guest').addEventListener('input', e => {
   const t = e.target;
   if (t.dataset.feat) D.features[t.dataset.feat] = t.checked;
+  else if (t.dataset.pay) D.payment[t.dataset.pay] = t.value;
   else if (t.dataset.m) { const [list, i, k] = t.dataset.m.split('.'); D.menu[list][+i][k] = t.value; }
   else return;
   setDirty(true);
 });
 $('tab-guest').addEventListener('click', e => {
   const del = e.target.closest('[data-mdel]'), add = e.target.closest('[data-madd]');
-  if (del) { const [list, i] = del.dataset.mdel.split('.'); D.menu[list].splice(+i, 1); }
+  if (e.target.id === 'qrDel') delete D.payment.qr;
+  else if (del) { const [list, i] = del.dataset.mdel.split('.'); D.menu[list].splice(+i, 1); }
   else if (add) {
     const list = add.dataset.madd, n = D.menu[list].length + 1;
     D.menu[list].push(list === 'cats' ? { id: 'dm' + n, vi: '', en: '', station: 'kitchen' } : { id: 'mon' + n, cat: D.menu.cats[0].id, vi: '', en: '', price: 0 });
   } else return;
   setDirty(true); renderGuest();
 });
+
+$('qrUpload').onchange = e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  if (f.size > 150 * 1024) return msg('Ảnh QR quá lớn (> 150 KB) — chụp/cắt nhỏ lại', 'err');
+  const rd = new FileReader();
+  rd.onload = () => { D.payment.qr = rd.result; setDirty(true); renderGuest(); };
+  rd.readAsDataURL(f);
+};
 
 // ---- Backup ----
 function renderBackup() {

@@ -81,5 +81,10 @@
   "menu": {
     "cats": [],
     "items": []
+  },
+  "payment": {
+    "bank": "",
+    "account": "",
+    "name": ""
   }
 }

@@ -118,3 +118,13 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A', station: 'D1' }], items: [] }; }), 'D1');
   console.log('✓ menu validated');
 }
+{
+  const s = clone(seed); delete s.payment;
+  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: '', account: '', name: '' });
+  s.payment = { bank: ' VCB ', account: '0123 456 789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA' };
+  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: 'VCB', account: '0123456789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA' });
+  has(errs(x => { x.payment = { account: '12ab' }; }), 'account');
+  has(errs(x => { x.payment = { qr: 'http://evil/x.png' }; }), 'qr');
+  has(errs(x => { x.payment = { qr: 'data:image/png;base64,' + 'A'.repeat(210 * 1024) }; }), 'qr');
+  console.log('✓ payment validated');
+}

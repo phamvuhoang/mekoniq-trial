@@ -286,9 +286,11 @@ function dispatch(c, r, d, by) {
 function call(c, d, by) {
   const P = c.site.points;
   if (!P[d.point] || P[d.point].kind !== 'table' || !CALL_VI[d.what] || !feature(c, 'call', by)) return;
+  if (d.what === 'paid') for (const o of c.st.orders) if (o.table === d.point && o.status === 'new') o.status = 'paid-claimed';   // staff checks the bank app
   const key = `call-${d.what}-${d.point}`;
   if (c.st.alerts.some(a => a.key === key)) return;
-  const text = `${pname(c, d.point)} ${CALL_VI[d.what]}${d.what === 'paid' && d.amount ? ' · ' + String(d.amount).slice(0, 20) : ''}`;
+  const amount = d.what !== 'paid' || !d.amount ? '' : ' · ' + (Number.isFinite(d.amount) ? vnd(Math.round(d.amount)) : String(d.amount).slice(0, 20));
+  const text = `${pname(c, d.point)} ${CALL_VI[d.what]}${amount}`;
   alert(c, key, 'warn', text);
   ev(c, { stationSound: 'ding', text });
   log(c, 'info', `${by}: ${text}`);

@@ -595,4 +595,16 @@ scenario('gọi món 2 danh mục -> mỗi trạm một cảnh báo, chỉ món 
   console.log('✓ order refused when features.order is off');
 }
 
+// ---- Phase 2 Task 8: pay on the robot ----
+scenario('khách báo đã chuyển khoản -> đơn của bàn chuyển paid-claimed, cảnh báo kèm số tiền', () => {
+  send({ type: 'order', table: 'T07', items: [{ id: 'pho', qty: 1 }, { id: 'cafe', qty: 2 }] });
+  send({ type: 'order', table: 'T08', items: [{ id: 'bia', qty: 1 }] });
+  send({ type: 'call', point: 'T07', what: 'paid', amount: 65000 + 2 * 29000 });
+  assert.deepStrictEqual(st.orders.map(o => [o.table, o.status]), [['T07', 'paid-claimed'], ['T08', 'new']]);
+  assert.ok(st.alerts.some(a => a.key === 'call-paid-T07' && a.text === 'Bàn 07 báo đã chuyển khoản · 123.000đ'));
+  send({ type: 'call', point: 'T03', what: 'paid' });   // nothing ordered on the robot: still tell staff
+  assert.ok(st.alerts.some(a => a.key === 'call-paid-T03' && a.text === 'Bàn 03 báo đã chuyển khoản'));
+  assert.deepStrictEqual(st.orders.map(o => o.status), ['paid-claimed', 'new']);
+});
+
 console.log('OK — all scenarios pass');

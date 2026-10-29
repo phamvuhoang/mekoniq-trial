@@ -53,6 +53,12 @@ function normalize(input, seed) {
     for (const k of ['x', 'y']) if (p[k] !== undefined) { const v = Number(p[k]); if (Number.isFinite(v)) p[k] = v; else delete p[k]; }
   }
   menu(site, errors);
+  // Bank transfer details for the robot pay screen (features.pay); qr = static QR image uploaded in setup.
+  const pay = site.payment && typeof site.payment === 'object' ? site.payment : {};
+  site.payment = { ...pay, bank: String(pay.bank || '').trim().slice(0, 20), account: String(pay.account || '').replace(/[\s.-]/g, ''), name: String(pay.name || '').trim().slice(0, 60) };
+  if (!/^\d*$/.test(site.payment.account)) errors.push('payment.account: chỉ gồm chữ số');
+  if (pay.qr === undefined || pay.qr === '') delete site.payment.qr;
+  else if (!/^data:image\/(png|jpeg|webp);base64,/.test(String(pay.qr)) || String(pay.qr).length > 200 * 1024) errors.push('payment.qr: phải là ảnh PNG/JPEG/WebP ≤ 200 KB');
   if (dishes.length !== 1) errors.push(`Phải có đúng một điểm loại dish (khu rửa chén), hiện có ${dishes.length}`);
   if (!site.points[site.dishPoint] || site.points[site.dishPoint].kind !== 'dish') errors.push(`dishPoint "${site.dishPoint}" phải là điểm loại dish`);
 
