@@ -576,5 +576,11 @@
     "guide": true,
     "order": true,
     "pay": true
-  }
+  },
+  "notes": [
+    "Không hành",
+    "Ít cay",
+    "Món nóng",
+    "Thêm chén"
+  ]
 }

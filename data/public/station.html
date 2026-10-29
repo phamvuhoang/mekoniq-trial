@@ -332,7 +332,8 @@ setView(['desk', 'mon'].includes(qs.get('view')) ? qs.get('view') : me && me.rol
 
 // ---- Desk: pick robot + task + tables, check the order preview, one big send button ----
 const F = { tab: 'deliver', from: 'kitchen', tables: [], table: null, to: null, robot: 'any', urgent: false, chips: [], free: '', retarget: null };
-const NOTES = ['Không hành', 'Ít cay', 'Món nóng', 'Thêm chén'];   // ponytail: fixed list; phase 2 moves it to site.notes
+const NOTES_DEF = ['Không hành', 'Ít cay', 'Món nóng', 'Thêm chén'];
+const notes = () => App.site.notes || NOTES_DEF;
 const tableIds = () => Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
 const press = (cond) => `aria-pressed="${!!cond}"`;
 const TASKS = { deliver: ['Giao món', 'Deliver'], bus: ['Thu dọn bàn', 'Bus table'], summon: ['Gọi robot tới', 'Summon'] };
@@ -370,7 +371,7 @@ function cancelTarget() {
 // Note chips + free text + urgent: holds a text input, so it only re-renders on a choice, not on every state tick.
 function renderTask() {
   $('pvOpts').innerHTML = (F.tab === 'deliver' ? `<p class="eyebrow sm">Ghi chú nhanh</p>
-    <div class="notes">${NOTES.map((n, i) => `<button class="chip" data-f="chip:${i}" ${press(F.chips.includes(n))}>${esc(n)}</button>`).join('')}</div>
+    <div class="notes">${notes().map((n, i) => `<button class="chip" data-f="chip:${i}" ${press(F.chips.includes(n))}>${esc(n)}</button>`).join('')}</div>
     <input type="text" id="note" maxlength="80" placeholder="Khác…" value="${esc(F.free)}">` : '') +
     `<label class="urg"><input type="checkbox" id="urgent" ${F.urgent ? 'checked' : ''}><span><b>Ưu tiên gấp</b><small>lên đầu hàng chờ</small></span></label>`;
 }
@@ -436,7 +437,7 @@ function renderDesk() {
 function choose(kind, val) {
   if (kind === 'tab') { F.tab = val; }
   else if (kind === 'from' || kind === 'robot' || kind === 'to') F[kind] = F[kind] === val && kind === 'to' ? null : val;
-  else if (kind === 'chip') { const n = NOTES[val]; F.chips = F.chips.includes(n) ? F.chips.filter(x => x !== n) : [...F.chips, n]; }
+  else if (kind === 'chip') { const n = notes()[val]; F.chips = F.chips.includes(n) ? F.chips.filter(x => x !== n) : [...F.chips, n]; }
   else if (kind === 't' && F.retarget) {
     send({ type: 'retarget', ...F.retarget, to: val, by: by() });
     toast('Đổi bàn → ' + pname(val));

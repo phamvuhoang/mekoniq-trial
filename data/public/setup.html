@@ -88,6 +88,8 @@
   .trow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
   .trow:first-of-type { border-top: 0; }
   .trow b { display: block; font-size: 15px; }
+  .nrow { display: flex; gap: 8px; padding: 4px 0; }
+  .nrow input { flex: 1; }
   .trow small { display: block; color: var(--muted); font-size: 12px; }
 
   /* Sao lưu: one centred card */
@@ -184,7 +186,8 @@
     </section>
     <section id="tab-roles" class="tab" hidden>
       <div class="card col"><p class="eyebrow sm">Vai trò · màn hình trạm</p><div class="col" id="roles"></div></div>
-      <div class="card"><p class="eyebrow sm">Thời gian & khay</p><div id="timing"></div></div>
+      <div class="col"><div class="card"><p class="eyebrow sm">Thời gian & khay</p><div id="timing"></div></div>
+        <div class="card"><p class="eyebrow sm">Ghi chú nhanh · chip trên máy trạm</p><div id="notes"></div></div></div>
     </section>
     <section id="tab-backup" class="tab" hidden><div class="card backup">
       <p class="eyebrow sm" style="margin:0">Sao lưu</p>
@@ -434,11 +437,23 @@ function renderRoles() {
   const T = { loadSec: ['Chờ xếp đồ tại trạm', 'Quá giờ huỷ lệnh', 10], handoffSec: ['Chờ khách nhận món', 'Quá giờ mang về', 10], remindSec: ['Nhắc khách mỗi', '', 5], standbySec: ['Robot được gọi tới chờ tối đa', '', 30] };
   setHTML($('timing'), Object.entries(T).map(([k, [t, s, d]]) => `<div class="trow"><div><b>${t}</b>${s ? `<small>${s}</small>` : ''}</div>${stepper(`data-t="${k}"`, D.timing[k], d, 0, 3600, 's')}</div>`).join('') +
     `<div class="trow"><div><b>Số khay trên robot</b></div>${stepper('data-trays="1"', D.trays, 1, 1, 8)}</div>`);
+  D.notes = D.notes || [...SiteLib.NOTES];
+  setHTML($('notes'), D.notes.map((n, i) => `<div class="nrow"><input type="text" maxlength="24" data-note="${i}" value="${esc(n)}" aria-label="Ghi chú ${i + 1}">
+    <button class="btn sm" data-delnote="${i}" aria-label="Xoá ghi chú">✕</button></div>`).join('') +
+    `<button class="btn sm" id="addNote" ${D.notes.length >= 8 ? 'disabled' : ''}>+ Thêm</button>`);
 }
+$('notes').addEventListener('click', e => {
+  const d = e.target.closest('[data-delnote]');
+  if (d) D.notes.splice(+d.dataset.delnote, 1);
+  else if (e.target.id === 'addNote') D.notes.push('');
+  else return;
+  setDirty(true); renderRoles();
+});
 $('tab-roles').addEventListener('input', e => {
   const t = e.target, g = t.closest('[data-role-i]');
   if (t.dataset.t) D.timing[t.dataset.t] = t.value;
   else if (t.dataset.trays) D.trays = t.value;
+  else if (t.dataset.note) D.notes[+t.dataset.note] = t.value;
   else if (g) D.roles[+g.dataset.roleI][t.dataset.k] = t.value || null;
   setDirty(true);
 });

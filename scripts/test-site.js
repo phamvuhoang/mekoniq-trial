@@ -85,3 +85,13 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   assert.deepStrictEqual(S.normalize(s, seed).site.features, { call: true, guide: false, order: true, pay: false });
   console.log('✓ features default to off, coerced to booleans');
 }
+{
+  const s = clone(seed); delete s.notes;
+  assert.deepStrictEqual(S.normalize(s, seed).site.notes, ['Không hành', 'Ít cay', 'Món nóng', 'Thêm chén']);
+  s.notes = ['  Ít đá ', '', 'x'.repeat(30), 42, 'a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const n = S.normalize(s, seed).site.notes;
+  assert.deepStrictEqual(n, ['Ít đá', 'x'.repeat(24), '42', 'a', 'b', 'c', 'd', 'e']);
+  s.notes = ['', '  '];
+  assert.strictEqual(S.normalize(s, seed).site.notes.length, 4, 'all empty -> defaults');
+  console.log('✓ quick notes trimmed, capped, defaulted');
+}

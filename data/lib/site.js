@@ -13,6 +13,7 @@ const KNOBS = {
 const RETRY_ERR = 'unreach|target|navigat|path';
 const MAX_BYTES = 512 * 1024;
 const FEATURES = ['call', 'guide', 'order', 'pay'];
+const NOTES = ['Không hành', 'Ít cay', 'Món nóng', 'Thêm chén'];   // station quick-note chips
 const TIMING = ['loadSec', 'handoffSec', 'remindSec', 'standbySec', 'lowBattery', 'chargedBattery'];
 
 // Validates and cleans a site coming from the UI. Returns {site, errors}; errors non-empty = reject.
@@ -37,6 +38,8 @@ function normalize(input, seed) {
 
   const f = site.features && typeof site.features === 'object' ? site.features : {};
   site.features = Object.fromEntries(FEATURES.map(k => [k, !!f[k]]));
+  const notes = (Array.isArray(site.notes) ? site.notes : []).map(n => String(n ?? '').trim().slice(0, 24)).filter(Boolean).slice(0, 8);
+  site.notes = notes.length ? notes : [...NOTES];
 
   // points
   site.points = site.points && typeof site.points === 'object' ? site.points : {};
@@ -112,4 +115,4 @@ function nextTable(site) {
   }
 }
 
-module.exports = { normalize, inUse, nextTable, KNOBS, RETRY_ERR, MAX_BYTES, ID, KINDS };
+module.exports = { normalize, inUse, nextTable, KNOBS, RETRY_ERR, MAX_BYTES, ID, KINDS, NOTES };
