@@ -57,6 +57,7 @@ const DICT = {
     prep: p => `${p.place} đang chuẩn bị · robot ${p.robot} tới lấy`, here: p => `Robot ${p.robot} đã tới bàn — mời lấy món ở khay ${p.tray}`,
     coming: p => `Robot ${p.robot} đang tới · ${p.eta ? `khoảng ${p.eta} giây` : 'sắp tới'}`, other: p => `Robot ${p.robot} đang giao bàn khác trước, sau đó tới bàn bạn`,
     paused: ' (robot đang tạm dừng)', cancel: 'Huỷ món này', sure: 'Chạm lần nữa để huỷ món',
+    order: 'Đơn', orderNew: 'Bếp đã nhận · đang chuẩn bị', orderPaid: 'Đã báo chuyển khoản · chờ nhân viên xác nhận', total: 'Tổng',
     staff: 'Gọi nhân viên', bill: 'Xin hoá đơn', staffOk: 'Đã gọi nhân viên — vui lòng chờ', billOk: 'Đã xin hoá đơn — nhân viên sẽ mang tới' },
   en: { brand: 'Serve S1 · Guest', eyebrow: 'Track your order', table: t => 'Table ' + t, food: 'Food', drink: 'Drinks', tray: 'tray',
     help: 'You can cancel an item on its way. If it is already on a tray, the robot takes it back to the kitchen/bar. For anything else, please call staff.',
@@ -65,6 +66,7 @@ const DICT = {
     prep: p => `${p.place} is preparing · robot ${p.robot} picks it up`, here: p => `Robot ${p.robot} is at your table — please take tray ${p.tray}`,
     coming: p => `Robot ${p.robot} on the way · ${p.eta ? `about ${p.eta} s` : 'arriving'}`, other: p => `Robot ${p.robot} serves another table first, then yours`,
     paused: ' (robot paused)', cancel: 'Cancel this item', sure: 'Tap again to cancel',
+    order: 'Order', orderNew: 'Kitchen received · preparing', orderPaid: 'Payment reported · waiting for staff', total: 'Total',
     staff: 'Call staff', bill: 'Request bill', staffOk: 'Staff called — please wait', billOk: 'Bill requested — staff will bring it' },
 };
 let lang = 'vi';
@@ -97,6 +99,15 @@ function item(m, i, s) {
     ${open ? `<button class="act warn${isArmed(k) ? ' armed' : ''}" data-m="${m.id}" data-s="${i}"><b>${tr(isArmed(k) ? 'sure' : 'cancel')}</b></button>` : ''}
   </div>`;
 }
+// Orders placed on the robot screen (spec 6.3); their delivery still shows as missions below.
+function orderCard(o) {
+  const M = App.site.menu || { items: [] }, name = id => { const it = M.items.find(i => i.id === id); return it ? it[lang] || it.vi : id; };
+  return `<div class="card item">
+    <div class="row"><b>${tr('order')} #${o.id}</b><span class="small muted">${clock(o.t)}</span></div>
+    <div class="what">${o.items.map(i => `${esc(name(i.id))} ×${i.qty}`).join(' · ')}</div>
+    <div class="row"><span class="small muted">${tr('total')}</span><b>${vnd(o.total)}</b></div>
+    <div class="status ${o.status === 'new' ? '' : 'ok'}">${tr(o.status === 'new' ? 'orderNew' : 'orderPaid')}</div></div>`;
+}
 // Call buttons rest 30 s after a tap; the station alert stays until staff ack it anyway.
 const callUntil = { staff: 0, bill: 0 };
 function render() {
@@ -113,7 +124,7 @@ function render() {
   document.body.classList.toggle('ft', call);
   setHTML($('foot'), ['staff', 'bill'].map(w => `<button class="act ${w === 'staff' ? 'primary' : 'outline'}" data-call="${w}" ${Date.now() < callUntil[w] ? 'disabled' : ''}><b>${tr(w)}</b></button>`).join(''));
   if (!App.state) return;
-  const rows = [];
+  const rows = (App.state.orders || []).filter(o => o.table === T).map(orderCard);
   for (const m of [...App.state.missions, ...App.state.history]) {
     if (m.status !== 'queued' && m.status !== 'active' && serverNow() - (m.endedAt || 0) > 30 * 60 * 1000) continue;
     m.stops.forEach((s, i) => { if (s.a === 'handoff' && s.p === T) rows.push(item(m, i, s)); });

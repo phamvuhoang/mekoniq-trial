@@ -46,6 +46,7 @@ const ACTION_VI = { load: 'Xếp đồ lên khay', handoff: 'Giao cho khách', c
 function missionOf(r) { return r && r.mission ? App.state.missions.find(m => m.id === r.mission) : null; }
 const etaSec = r => Math.round((r.rem || 0) / ((App.site.sim || {}).speed || 1) / (r.slow ? 0.5 : 1));   // remaining route length, not straight line
 // Simulator robots drive on the hand-drawn floor plan (web demo); a Valetudo-only site shows the robot's own map instead.
+const vnd = n => String(n).replace(/\B(?=(\d{3})+$)/g, '.') + 'đ';
 const feat = f => !!App.site && !!(App.site.features || {})[f];   // phase-2 features, off unless site.features turns them on
 const hasSim = () => !!App.site && App.site.robots.some(r => !r.driver || r.driver === 'sim');
 // [text, tone] for a robot's current status.

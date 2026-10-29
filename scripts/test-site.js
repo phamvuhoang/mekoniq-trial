@@ -100,3 +100,21 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   assert.deepStrictEqual(S.normalize(s, seed).errors, []);
   console.log('✓ entrance points accepted');
 }
+{
+  const s = clone(seed); delete s.menu;
+  assert.deepStrictEqual(S.normalize(s, seed).site.menu, { cats: [], items: [] });
+  s.points.bar = { name: 'Quầy', kind: 'station' };
+  s.menu = { cats: [{ id: 'mon', vi: 'Món', en: 'Mains' }, { id: 'nuoc', vi: 'Nước', en: 'Drinks', station: 'bar' }],
+    items: [{ id: 'pho', cat: 'mon', vi: 'Phở', en: 'Pho', price: '65000' }, { id: 'tra', cat: 'nuoc', vi: 'Trà', price: 5000 }] };
+  const r = S.normalize(s, seed);
+  assert.deepStrictEqual(r.errors, []);
+  assert.strictEqual(r.site.menu.cats[0].station, 'kitchen');
+  assert.strictEqual(r.site.menu.items[0].price, 65000);
+  assert.strictEqual(r.site.menu.items[1].en, 'Trà');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'zz', vi: 'P', price: 1 }] }; }), 'zz');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'a', vi: 'P', price: -1 }] }; }), 'price');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'a', vi: 'P', price: 1.5 }] }; }), 'price');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'a', vi: 'P', price: 1 }, { id: 'p', cat: 'a', vi: 'Q', price: 1 }] }; }), 'trùng');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A', station: 'D1' }], items: [] }; }), 'D1');
+  console.log('✓ menu validated');
+}

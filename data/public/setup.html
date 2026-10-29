@@ -94,6 +94,16 @@
 
   /* Sao lưu: one centred card */
   #tab-backup { place-content: center; }
+
+  /* Khách hàng: menu card | features + payment */
+  #tab-guest { grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+  #tab-guest > .card { max-height: 100%; overflow: auto; }
+  .mtab { width: 100%; border-collapse: collapse; }
+  .mtab td { padding: 3px 4px; } .mtab td:last-child { width: 1%; }
+  .mtab input, .mtab select { width: 100%; min-width: 0; }
+  .mtab input.id { font-family: var(--mono); max-width: 110px; } .mtab input[type=number] { max-width: 110px; }
+  .feat { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .feat:first-of-type { border-top: 0; } .feat div { flex: 1; } .feat small { display: block; color: var(--muted); font-size: 12px; }
   .backup { width: min(640px, 100%); display: grid; gap: 14px; padding: 24px; }
   .backup h2 { margin: 0; font-size: 26px; font-weight: 900; }
   .backup p { margin: 0; }
@@ -140,6 +150,7 @@
     #tab-robots { grid-template: none / repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); overflow: auto; }
     #robots, #robots.many { display: contents; }
     #tab-roles { grid-template-columns: minmax(0, 1fr); }
+    #tab-guest { grid-template-columns: minmax(0, 1fr); }
     #tab-system { grid-template-columns: minmax(0, 1fr); }
   }
   :root[data-orient=portrait] .appbar { height: auto; flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; }
@@ -149,6 +160,7 @@
   :root[data-orient=portrait] #tab-robots { grid-template: none / repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); overflow: auto; }
   :root[data-orient=portrait] #robots, :root[data-orient=portrait] #robots.many { display: contents; }
   :root[data-orient=portrait] #tab-roles { grid-template-columns: minmax(0, 1fr); }
+  :root[data-orient=portrait] #tab-guest { grid-template-columns: minmax(0, 1fr); }
   :root[data-orient=portrait] #tab-system { grid-template-columns: minmax(0, 1fr); }
 </style>
 </head><body>
@@ -188,6 +200,10 @@
       <div class="card col"><p class="eyebrow sm">Vai trò · màn hình trạm</p><div class="col" id="roles"></div></div>
       <div class="col"><div class="card"><p class="eyebrow sm">Thời gian & khay</p><div id="timing"></div></div>
         <div class="card"><p class="eyebrow sm">Ghi chú nhanh · chip trên máy trạm</p><div id="notes"></div></div></div>
+    </section>
+    <section id="tab-guest" class="tab" hidden>
+      <div class="card col"><p class="eyebrow sm">Thực đơn · gọi món trên robot</p><div id="menu"></div></div>
+      <div class="col"><div class="card"><p class="eyebrow sm">Tính năng cho khách</p><div id="features"></div></div></div>
     </section>
     <section id="tab-backup" class="tab" hidden><div class="card backup">
       <p class="eyebrow sm" style="margin:0">Sao lưu</p>
@@ -230,7 +246,7 @@ const HINT = {
 // D = the draft being edited; it reaches the orchestrator on Lưu. dirty = differs from App.site.
 let D = null, dirty = false, saving = false, tab = new URLSearchParams(location.search).get('tab') || 'points', sel = null, robotId = null;
 let stale = false, err = '';   // strips under the app bar: another station saved / last save or import failed
-const TABS = { points: 'Điểm & bản đồ', robots: 'Robot', roles: 'Vai trò & thời gian', backup: 'Sao lưu', system: 'Hệ thống' };
+const TABS = { points: 'Điểm & bản đồ', robots: 'Robot', roles: 'Vai trò & thời gian', guest: 'Khách hàng', backup: 'Sao lưu', system: 'Hệ thống' };
 const valRobots = () => D.robots.filter(r => r.driver === 'valetudo');
 const curRobot = () => valRobots().find(r => r.id === robotId) || valRobots()[0] || null;
 
@@ -261,6 +277,7 @@ function render() {
   if (tab === 'points') renderPoints();
   if (tab === 'robots') renderRobots();
   if (tab === 'roles') renderRoles();
+  if (tab === 'guest') renderGuest();
   if (tab === 'backup') renderBackup();
   healthPolling(tab === 'system');
   if (tab === 'system') renderSystem();
@@ -460,6 +477,45 @@ $('tab-roles').addEventListener('input', e => {
 $('roles').addEventListener('click', e => {
   const b = e.target.closest('[data-rtab]'), g = b && b.closest('[data-role-i]');
   if (g) { D.roles[+g.dataset.roleI].tab = b.dataset.rtab; setDirty(true); renderRoles(); }
+});
+
+// ---- Guest features: flags, menu ----
+const FEAT = { call: ['Gọi nhân viên / hoá đơn', 'Nút trên trang QR và màn robot'], guide: ['Dẫn khách tới bàn', 'Robot chờ ở trạm/cửa đón dẫn khách, có đi chậm'],
+  order: ['Gọi món trên robot', 'Cần thực đơn bên trái; bếp/quầy nhận cảnh báo'], pay: ['Thanh toán VietQR', 'Cần tài khoản ngân hàng'] };
+function renderGuest() {
+  D.features = D.features || {};
+  D.menu = D.menu || { cats: [], items: [] };
+  setHTML($('features'), Object.entries(FEAT).map(([k, [t, sub]]) => `<label class="feat"><div><b>${t}</b><small>${sub}</small></div>
+    <input type="checkbox" data-feat="${k}" ${D.features[k] ? 'checked' : ''}></label>`).join(''));
+  const M = D.menu, stations = Object.keys(D.points).filter(k => D.points[k].kind === 'station');
+  const inp = (path, v, cls = '', type = 'text') => `<input type="${type}" class="${cls}" data-m="${path}" value="${esc(v ?? '')}">`;
+  setHTML($('menu'), `<table class="mtab"><tr class="muted small"><td>Mã</td><td>Danh mục</td><td>English</td><td>Trạm làm</td><td></td></tr>
+    ${M.cats.map((c, i) => `<tr><td>${inp(`cats.${i}.id`, c.id, 'id')}</td><td>${inp(`cats.${i}.vi`, c.vi)}</td><td>${inp(`cats.${i}.en`, c.en)}</td>
+      <td><select data-m="cats.${i}.station">${stations.map(st => `<option value="${st}" ${(c.station || 'kitchen') === st ? 'selected' : ''}>${esc(D.points[st].name)}</option>`).join('')}</select></td>
+      <td><button class="btn sm" data-mdel="cats.${i}" aria-label="Xoá danh mục">✕</button></td></tr>`).join('')}</table>
+    <button class="btn sm" data-madd="cats">+ Thêm danh mục</button>
+    <table class="mtab"><tr class="muted small"><td>Mã</td><td>Món</td><td>English</td><td>Giá (đ)</td><td>Danh mục</td><td></td></tr>
+    ${M.items.map((it, i) => `<tr><td>${inp(`items.${i}.id`, it.id, 'id')}</td><td>${inp(`items.${i}.vi`, it.vi)}</td><td>${inp(`items.${i}.en`, it.en)}</td>
+      <td>${inp(`items.${i}.price`, it.price, '', 'number')}</td>
+      <td><select data-m="items.${i}.cat">${M.cats.map(c => `<option value="${esc(c.id)}" ${it.cat === c.id ? 'selected' : ''}>${esc(c.vi)}</option>`).join('')}</select></td>
+      <td><button class="btn sm" data-mdel="items.${i}" aria-label="Xoá món">✕</button></td></tr>`).join('')}</table>
+    <button class="btn sm primary" data-madd="items" ${M.cats.length ? '' : 'disabled'}>+ Thêm món</button>`);
+}
+$('tab-guest').addEventListener('input', e => {
+  const t = e.target;
+  if (t.dataset.feat) D.features[t.dataset.feat] = t.checked;
+  else if (t.dataset.m) { const [list, i, k] = t.dataset.m.split('.'); D.menu[list][+i][k] = t.value; }
+  else return;
+  setDirty(true);
+});
+$('tab-guest').addEventListener('click', e => {
+  const del = e.target.closest('[data-mdel]'), add = e.target.closest('[data-madd]');
+  if (del) { const [list, i] = del.dataset.mdel.split('.'); D.menu[list].splice(+i, 1); }
+  else if (add) {
+    const list = add.dataset.madd, n = D.menu[list].length + 1;
+    D.menu[list].push(list === 'cats' ? { id: 'dm' + n, vi: '', en: '', station: 'kitchen' } : { id: 'mon' + n, cat: D.menu.cats[0].id, vi: '', en: '', price: 0 });
+  } else return;
+  setDirty(true); renderGuest();
 });
 
 // ---- Backup ----

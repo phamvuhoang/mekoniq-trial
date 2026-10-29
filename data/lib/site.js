@@ -52,6 +52,7 @@ function normalize(input, seed) {
     if (p.kind === 'dish') dishes.push(id);
     for (const k of ['x', 'y']) if (p[k] !== undefined) { const v = Number(p[k]); if (Number.isFinite(v)) p[k] = v; else delete p[k]; }
   }
+  menu(site, errors);
   if (dishes.length !== 1) errors.push(`Phải có đúng một điểm loại dish (khu rửa chén), hiện có ${dishes.length}`);
   if (!site.points[site.dishPoint] || site.points[site.dishPoint].kind !== 'dish') errors.push(`dishPoint "${site.dishPoint}" phải là điểm loại dish`);
 
@@ -92,6 +93,35 @@ function normalize(input, seed) {
     }
   });
   return { site, errors };
+}
+
+// Robot menu (features.order): cats [{id, vi, en, station}], items [{id, cat, vi, en, price}] in VND.
+function menu(site, errors) {
+  const m = site.menu && typeof site.menu === 'object' ? site.menu : {};
+  const cats = Array.isArray(m.cats) ? m.cats.filter(x => x && typeof x === 'object') : [];
+  const items = Array.isArray(m.items) ? m.items.filter(x => x && typeof x === 'object') : [];
+  const seen = new Set();
+  const named = (x, what) => {
+    x.id = String(x.id || '');
+    if (!ID.test(x.id)) errors.push(`${what} "${x.id}": id không hợp lệ`);
+    else if (seen.has(x.id)) errors.push(`${what} "${x.id}" bị trùng`);
+    seen.add(x.id);
+    x.vi = String(x.vi || x.id).slice(0, 40); x.en = String(x.en || x.vi).slice(0, 40);
+  };
+  for (const c of cats) {
+    named(c, 'Danh mục');
+    c.station = c.station || 'kitchen';
+    if (c.station !== 'kitchen' && (!site.points[c.station] || site.points[c.station].kind !== 'station')) errors.push(`Danh mục "${c.id}": trạm "${c.station}" không phải điểm loại station`);
+  }
+  seen.clear();
+  for (const it of items) {
+    named(it, 'Món');
+    if (!cats.some(c => c.id === it.cat)) errors.push(`Món "${it.id}": danh mục "${it.cat}" không tồn tại`);
+    const p = Number(it.price);
+    if (!Number.isInteger(p) || p < 0) errors.push(`Món "${it.id}": price phải là số nguyên ≥ 0 (VND)`);
+    else it.price = p;
+  }
+  site.menu = { ...m, cats, items };
 }
 
 // Point ids and robot ids referenced by open missions — they cannot be deleted while in use.

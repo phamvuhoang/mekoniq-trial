@@ -564,4 +564,35 @@ scenario('dẫn khách: không ai xác nhận -> nhắc, quá giờ robot tự v
   console.log('✓ guide refused when features.guide is off');
 }
 
+// ---- Phase 2 Task 7: order food on the robot ----
+scenario('gọi món 2 danh mục -> mỗi trạm một cảnh báo, chỉ món của trạm đó', () => {
+  events = [];
+  send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 2 }, { id: 'trada', qty: 2 }, { id: 'goicuon', qty: 1 }], by: 'Khách Bàn 05' });
+  assert.strictEqual(st.orders.length, 1);
+  const o = st.orders[0];
+  assert.deepStrictEqual([o.table, o.total, o.status], ['T05', 2 * 65000 + 2 * 5000 + 45000, 'new']);
+  assert.deepStrictEqual(o.items, [{ id: 'pho', qty: 2, price: 65000 }, { id: 'trada', qty: 2, price: 5000 }, { id: 'goicuon', qty: 1, price: 45000 }]);
+  const k = st.alerts.find(a => a.key === `order-${o.id}-kitchen`), b = st.alerts.find(a => a.key === `order-${o.id}-bar`);
+  assert.strictEqual(k.text, 'Bàn 05 gọi món: Phở bò ×2, Gỏi cuốn ×1 · 175.000đ');
+  assert.strictEqual(b.text, 'Bàn 05 gọi món: Trà đá ×2 · 10.000đ');
+  assert.deepStrictEqual(events.filter(e => e.stationSound === 'ding').map(e => e.point).sort(), ['bar', 'kitchen']);
+  const snap = JSON.parse(O.handle(st, site, { source: 'ui', data: { type: 'hello' }, session: 'S' }, now).ui.find(u => JSON.parse(u.payload).type === 'state').payload);
+  assert.strictEqual(snap.orders.length, 1);
+  for (const bad of [[{ id: 'nope', qty: 1 }], [{ id: 'pho', qty: 0 }], [{ id: 'pho', qty: 21 }], [], 'pho'])
+    send({ type: 'order', table: 'T05', items: bad });
+  send({ type: 'order', table: 'kitchen', items: [{ id: 'pho', qty: 1 }] });
+  assert.strictEqual(st.orders.length, 1, 'invalid orders ignored');
+  now += 24 * 3600 * 1000 + 1000;
+  run(1);
+  assert.strictEqual(st.orders.length, 0, 'dropped after 24 h');
+});
+
+{
+  const off = JSON.parse(JSON.stringify(site)); off.features.order = false;
+  const st10 = O.init(off, now);
+  O.handle(st10, off, { source: 'ui', data: { by: 'Khách', type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }] } }, now);
+  assert.deepStrictEqual([st10.orders.length, st10.alerts.length, st10.log[0].level], [0, 0, 'warn']);
+  console.log('✓ order refused when features.order is off');
+}
+
 console.log('OK — all scenarios pass');

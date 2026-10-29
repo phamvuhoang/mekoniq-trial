@@ -24,7 +24,7 @@ const CALL_VI = { staff: 'gọi nhân viên', bill: 'xin hoá đơn', paid: 'bá
 let lastSnap = '';
 
 function init(site, now) {
-  const st = { seq: 0, alertSeq: 0, robots: {}, missions: [], history: [], log: [], alerts: [],
+  const st = { seq: 0, alertSeq: 0, orderSeq: 0, robots: {}, missions: [], history: [], log: [], alerts: [], orders: [],
     kpi: { delivered: 0, cancelledCustomer: 0, cancelledStaff: 0, timeout: 0, failed: 0, interventions: 0, deliverySecSum: 0, reroutes: 0, guides: 0 } };
   sync(st, site, now);
   return st;
@@ -33,6 +33,7 @@ function init(site, now) {
 // Adds robots that appear in site.json after state was persisted.
 // Also drops robots removed from site.json (setup.html) once they have no mission.
 function sync(st, site, now) {
+  if (!st.orders) { st.orders = []; st.orderSeq = 0; }   // state saved before orders existed
   if (!st.map) { st.map = { v: 1, nodes: {}, edges: [], ...JSON.parse(JSON.stringify(site.map || {})) }; st.obstacles = []; }
   for (const { id, dock } of site.robots) {
     if (st.robots[id]) { st.robots[id].dock = dock; continue; }
@@ -293,6 +294,30 @@ function call(c, d, by) {
   log(c, 'info', `${by}: ${text}`);
 }
 
+const vnd = n => String(n).replace(/\B(?=(\d{3})+$)/g, '.') + 'đ';
+// Guest orders on the robot screen. One alert per preparing station listing only its items; the station then
+// sends the delivery as usual (food must be cooked first, so no mission is created here).
+function order(c, d, by) {
+  const P = c.site.points, menu = c.site.menu || {}, items = menu.items || [], cats = menu.cats || [];
+  if (!P[d.table] || P[d.table].kind !== 'table' || !Array.isArray(d.items) || !d.items.length || d.items.length > 30) return;
+  const lines = d.items.map(x => ({ x, it: x && items.find(i => i.id === x.id) }));
+  if (lines.some(({ x, it }) => !it || !Number.isInteger(x.qty) || x.qty < 1 || x.qty > 20) || !feature(c, 'order', by)) return;
+  const o = { id: ++c.st.orderSeq, table: d.table, items: lines.map(({ x, it }) => ({ id: it.id, qty: x.qty, price: it.price })), t: c.now, status: 'new', by };
+  o.total = o.items.reduce((a, i) => a + i.qty * i.price, 0);
+  c.st.orders.push(o);
+  const byStation = {};
+  for (const { x, it } of lines) {
+    const station = (cats.find(k => k.id === it.cat) || {}).station || 'kitchen';
+    (byStation[station] = byStation[station] || []).push({ it, qty: x.qty });
+  }
+  for (const [station, list] of Object.entries(byStation)) {
+    const text = `${pname(c, d.table)} gọi món: ${list.map(l => `${l.it.vi} ×${l.qty}`).join(', ')} · ${vnd(list.reduce((a, l) => a + l.qty * l.it.price, 0))}`;
+    alert(c, `order-${o.id}-${station}`, 'warn', text);
+    ev(c, { stationSound: 'ding', point: station, text });
+  }
+  log(c, 'info', `${by}: ${pname(c, d.table)} gọi ${o.items.length} món · ${vnd(o.total)} (đơn #${o.id})`);
+}
+
 function telemetry(c, d) {
   const { st, site, now } = c;
   const list = Array.isArray(d.robots) ? d.robots : [];
@@ -352,6 +377,7 @@ function reroute(c, r, why) {
 // Waiting-time rules while a robot stands at a stop.
 function timers(c) {
   const T = c.site.timing;
+  c.st.orders = c.st.orders.filter(o => o.status !== 'paid' && c.now - o.t < 24 * 3600 * 1000);
   for (const r of Object.values(c.st.robots)) {
     if (r.phase !== 'atStop' || r.halt || r.offline) continue;
     const m = findM(c, r.mission), s = m.stops[m.cur];
@@ -426,6 +452,7 @@ function fromUI(c, d, session, seed) {
     case 'confirm': if (r) confirm(c, r, d, by); return;
     case 'dispatch': if (r) dispatch(c, r, d, by); return;
     case 'call': return call(c, d, by);
+    case 'order': return order(c, d, by);
     case 'speed':   // guide: "Đi chậm hơn" for guests who walk slowly; ends with the mission
       if (!r || !r.mission || r.offline || !!d.slow === !!r.slow) return;
       r.slow = !!d.slow;
@@ -510,7 +537,7 @@ function snapshot(st) {
     robots: Object.values(st.robots).map(({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos, slow }) =>
       ({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos: pos || null, slow: !!slow })),
     missions: st.missions, history: st.history.slice(0, 15), log: st.log.slice(0, 40), alerts: st.alerts, kpi: st.kpi,
-    obstacles: st.obstacles, mapV: st.map.v
+    obstacles: st.obstacles, mapV: st.map.v, orders: st.orders
   };
 }
 
