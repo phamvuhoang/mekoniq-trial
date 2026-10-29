@@ -219,14 +219,6 @@ const sortMissions = () => App.state.missions.slice().sort((a, b) => (a.status =
 function missionStatus(m) {
   return m.status === 'queued' ? ['Chờ ' + (m.robotPref === 'any' ? 'robot rảnh' : m.robotPref), 'warn'] : robotStatus(App.state.robots.find(x => x.id === m.robot));
 }
-// What a table tile shows: robot standing there, robot on its way, queued, or free.
-function tableState(t) {
-  const r = App.state.robots.find(x => x.phase === 'atStop' && x.at === t);
-  if (r) return [r.id + ' đang ở bàn', 'here'];
-  for (const m of App.state.missions) for (const s of m.stops)
-    if (s.p === t && (s.status === 'pending' || s.status === 'active')) return [s.status === 'active' && m.robot ? m.robot + ' đang tới' : m.status !== 'active' ? 'Trong hàng chờ' : m.loaded ? 'Sắp tới lượt' : 'Đang chuẩn bị', 'busy'];
-  return ['Sẵn sàng', ''];
-}
 // Red button: undo the selection, or cancel/recall the chosen robot's job (else this station's newest job).
 // Food coming back / dishes to unload can't be cancelled, only received — from the station too, staff stand right there.
 const backStop = m => { const s = m.status === 'active' && m.stops[m.cur]; return s && ['return', 'unload'].includes(s.a) ? s : null; };
@@ -336,7 +328,6 @@ setInterval(() => $('clock').textContent = new Date().toLocaleTimeString('vi-VN'
 // ---- Map ----
 // Modes: pick tables for the form, or (demo) drop a chair / a passer-by on the floor to test obstacle handling.
 let mapBuilt = false, netV = -1, MODE = 'pick';
-const TONE = { ok: '#b9fb75', go: '#63dcc5', warn: '#ff9f68', danger: '#d93d42' };
 const MODES = { pick: ['👆 Chọn bàn', 'Chạm bàn trên sơ đồ để chọn cho nhiệm vụ.'],
   object: ['🪑 Đặt vật cản', 'Chạm lên lối đi để đặt ghế/xe đẩy (mô phỏng). Robot dừng, xin nhường đường, chờ rồi đi vòng; không còn đường thì báo nhân viên. Chạm vật cản để gỡ.'],
   person: ['🚶 Người đi qua', 'Chạm lên lối đi: một người đứng chắn vài giây rồi đi. Robot chỉ dừng chờ, không đổi lộ trình.'] };

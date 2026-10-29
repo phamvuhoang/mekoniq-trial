@@ -1,5 +1,7 @@
 // Shared by station / robot / table pages: messaging (via transport.js), MP3 cues, labels, small UI helpers.
 const App = { site: null, state: null, map: null, skew: 0 };
+// ?orient=portrait forces the portrait layout (screenshot aid); CSS mirrors the orientation media query under :root[data-orient=portrait].
+if (new URLSearchParams(location.search).get('orient') === 'portrait') document.documentElement.dataset.orient = 'portrait';
 
 function connect(onMsg) {
   const off = document.getElementById('offline'), dot = document.getElementById('conn');
@@ -82,6 +84,35 @@ function toast(text, level = 'info') {
   t.className = 'toast ' + level; t.textContent = text;
   box.replaceChildren(t);
   setTimeout(() => t.remove(), 2400);
+}
+
+// Bilingual label, VI line + EN line. Arguments are trusted markup: esc() anything dynamic.
+const L = (vi, en) => `<b>${vi}</b><small>${en}</small>`;
+const TONE = { ok: '#b9fb75', go: '#63dcc5', warn: '#ff9f68', danger: '#d93d42' };
+
+// Dark app bar for tablet pages. Returns a string; the caller wires clicks on [data-tab].
+// tabs = [{id, label, on}]; right = raw HTML (links, buttons). Ends with the clock and connection dot.
+function APPBAR({ title, sub, tabs = [], right = '', home = 'index.html' } = {}) {
+  return `<header class="appbar"><a class="home" href="${esc(home)}"><img src="logo.svg" alt="MEKONIQ"></a>
+    <div class="title"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>
+    ${tabs.length ? `<div class="seg dark">${tabs.map(t => `<button data-tab="${esc(t.id)}" aria-pressed="${!!t.on}">${esc(t.label)}</button>`).join('')}</div>` : ''}
+    <div class="right">${right}</div><span id="clock"></span><span class="dot" id="conn"></span></header>`;
+}
+function startClock() {
+  const tick = () => { const c = document.getElementById('clock'); if (c) c.textContent = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }); };
+  tick(); setInterval(tick, 1000);
+}
+// Alert strip rows (one per alert). extra(a) may return more button HTML placed before "Đã biết".
+function strip(alerts, extra) {
+  return (alerts || []).map(a => `<div class="strip${a.level === 'error' ? ' error' : ''}"><span class="kind">${a.level === 'error' ? 'Lỗi' : 'Cảnh báo'}</span><span class="grow">${esc(a.text)}</span><span class="t">${clock(a.t)}</span>${extra ? extra(a) : ''}<button class="btn sm dark" data-act="ack" data-id="${esc(a.id)}">Đã biết</button></div>`).join('');
+}
+// What a table tile shows: robot standing there, robot on its way, queued, or free.
+function tableState(t) {
+  const r = App.state.robots.find(x => x.phase === 'atStop' && x.at === t);
+  if (r) return [r.id + ' đang ở bàn', 'here'];
+  for (const m of App.state.missions) for (const s of m.stops)
+    if (s.p === t && (s.status === 'pending' || s.status === 'active')) return [s.status === 'active' && m.robot ? m.robot + ' đang tới' : m.status !== 'active' ? 'Trong hàng chờ' : m.loaded ? 'Sắp tới lượt' : 'Đang chuẩn bị', 'busy'];
+  return ['Sẵn sàng', ''];
 }
 
 const BRAND = sub => `<a class="identity" href="index.html"><img src="logo.svg" alt="">

@@ -70,7 +70,7 @@ a { color: inherit; }
 .pick small { font-size: 10px; color: var(--muted); }
 .pick[aria-pressed="true"] small { color: inherit; }
 
-.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 16px; min-width: 0; }
 .field { margin-bottom: 14px; }
 .field > label, .label { display: block; font-size: 12px; font-weight: 800; color: var(--muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
 input[type=text] { width: 100%; border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 10px 12px; }
@@ -110,3 +110,82 @@ input[type=text] { width: 100%; border: 1px solid var(--line); background: var(-
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend svg { width: 34px; height: 8px; }
+
+/* ---- Tablet design system (spec 2): appbar, actions, table tiles, alert strip, screen frame ---- */
+.eyebrow.sm { font-size: 12px; letter-spacing: .1em; color: var(--muted); font-weight: 800; margin: 0 0 8px; }
+.eyebrow.sm:before { display: none; }
+
+/* Dark app bar: logo | title | tabs | spacer | right | clock | connection dot */
+.appbar { height: 64px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 16px; background: var(--deep); color: #fff; }
+.appbar .home { display: flex; flex: none; }
+.appbar .home img { width: 40px; height: 40px; display: block; }
+.appbar .title { line-height: 1.15; min-width: 0; }
+.appbar .title b { display: block; font-size: 17px; font-weight: 900; white-space: nowrap; }
+.appbar .title small { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .18em; color: #9bb6b0; white-space: nowrap; }
+.appbar .right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.appbar .lnk { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #3c5f5c; border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 800; color: #cfe0db; background: transparent; text-decoration: none; white-space: nowrap; }
+.appbar #clock { font: 500 16px var(--mono); font-variant-numeric: tabular-nums; }
+.seg.dark { flex-wrap: nowrap; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255, 255, 255, .08); }
+.seg.dark button { background: transparent; border: 0; border-radius: 10px; min-height: 40px; padding: 8px 18px; color: #cfe0db; font-weight: 800; white-space: nowrap; }
+.seg.dark button[aria-pressed="true"] { background: var(--mint); color: var(--deep); }
+
+/* Command buttons: two lines, <b>VI</b><small>EN</small>. Height via --act-h (default 72px; robot sets 92px). */
+.act { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; min-height: var(--act-h, 72px); padding: 8px 18px;
+  border: 2px solid var(--line); border-radius: 22px; background: #fff; color: var(--deep); text-align: center; line-height: 1.15; }
+.act b { font-size: 22px; font-weight: 900; }
+.act small { font-size: 13px; font-weight: 700; opacity: .65; }
+.act:disabled { opacity: .45; cursor: not-allowed; }
+.act.primary { background: var(--mint); border-color: var(--mint); box-shadow: inset 0 -6px 0 rgba(7, 29, 33, .14); }
+.act.outline { background: #fff; border-color: var(--line); }
+.act.danger { border-color: var(--danger); color: var(--danger); }
+.act.warn { border-color: var(--accent); color: var(--warn-ink); }
+.act.dark { min-height: 60px; background: var(--deep); border-color: var(--deep); color: #fff; }
+.act.armed { background: var(--danger); border-color: var(--danger); color: #fff; }
+.act.warn.armed { background: var(--accent); border-color: var(--accent); color: var(--alert-ink); }
+
+/* Table tile: <button class="tt"><span class="lbl">BÀN</span><b>01</b><span class="st">Sẵn sàng</span><span class="tag">✓ K1</span></button> */
+.tt-grid { --cols: 4; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 10px; min-height: 0; }
+.tt-grid.cols6 { --cols: 6; }
+.tt { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 4px;
+  border: 1.5px solid var(--line); border-radius: 18px; background: #fff; color: var(--ink); text-align: center; line-height: 1.1; }
+.tt .lbl { font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; opacity: .65; }
+.tt b { font-size: 44px; font-weight: 900; line-height: 1; }
+.tt .st { font-size: 13px; font-weight: 700; opacity: .75; }
+.tt .tag { position: absolute; top: 8px; right: 10px; font-size: 12px; font-weight: 800; }
+.tt.busy { background: #fff6ee; border-color: #ffc9a3; }
+.tt.busy .st { color: var(--warn-ink); opacity: 1; }
+.tt.here .st { color: var(--green); opacity: 1; }
+.tt[aria-pressed="true"] { background: var(--deep); border-color: var(--deep); color: var(--mint); }
+.tt[aria-pressed="true"] .st { opacity: .85; }
+
+/* Alert strip under the app bar: one row per alert */
+.strip { flex: none; display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--accent); color: var(--alert-ink); font-weight: 700; }
+.strip.error { background: var(--danger); color: #fff; }
+.strip .kind { text-transform: uppercase; letter-spacing: .08em; font-size: 12px; font-weight: 900; }
+.strip .grow { flex: 1; min-width: 0; }
+.strip .t { font: 500 13px var(--mono); opacity: .8; }
+
+/* Stepper "− n +" and on/off switch */
+.stepper { display: inline-flex; align-items: center; border: 1.5px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; }
+.stepper button { width: 48px; height: 48px; border: 0; background: transparent; font-size: 24px; font-weight: 900; }
+.stepper b { min-width: 44px; text-align: center; font: 500 20px var(--mono); }
+.switch { position: relative; display: inline-block; flex: none; width: 44px; height: 26px; }
+.switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.switch i { position: absolute; inset: 0; border-radius: 999px; background: var(--line); transition: background .15s; pointer-events: none; }
+.switch i:before { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .15s; }
+.switch input:checked + i { background: var(--green); }
+.switch input:checked + i:before { transform: translateX(18px); }
+.switch input:focus-visible + i { outline: 2px solid var(--iq); outline-offset: 2px; }
+
+/* Tablet frame: fits the viewport, never scrolls (phones narrower than 600px may scroll). */
+.screen { height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-app); }
+.screen > .body { flex: 1; min-height: 0; display: grid; gap: 12px; padding: 12px; }
+@media (max-width: 599px) { .screen { height: auto; min-height: 100dvh; overflow: auto; } }
+@media (orientation: portrait), (max-width: 900px) {
+  .screen > .body { grid-template-columns: minmax(0, 1fr); }
+  .tt-grid, .tt-grid.cols6 { --cols: 3; }
+  .tt b { font-size: 40px; }
+}
+:root[data-orient=portrait] .screen > .body { grid-template-columns: minmax(0, 1fr); }
+:root[data-orient=portrait] .tt-grid, :root[data-orient=portrait] .tt-grid.cols6 { --cols: 3; }
+:root[data-orient=portrait] .tt b { font-size: 40px; }
