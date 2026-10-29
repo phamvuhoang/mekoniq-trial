@@ -383,4 +383,23 @@ scenario('chuyển xử lý thủ công', () => {
   console.log('✓ route/simulator ignore points without a node');
 }
 
+{
+  pump({ source: 'adapter', data: { event: 'alert', key: 'mqtt-down', level: 'error', text: 'Broker MQTT trong máy không chạy' } });
+  let a = st.alerts.find(a => a.key === 'mqtt-down');
+  assert.ok(a && a.level === 'error' && a.robot === undefined && a.text === 'Broker MQTT trong máy không chạy');
+  pump({ source: 'adapter', data: { event: 'alert', key: 'mqtt-down', level: 'error', text: 'again' } });
+  assert.strictEqual(st.alerts.filter(a => a.key === 'mqtt-down').length, 1);           // dedup by key
+  pump({ source: 'adapter', data: { event: 'alert', key: 'ip-changed', level: 'bogus', text: 'x'.repeat(300) } });
+  a = st.alerts.find(a => a.key === 'ip-changed'); assert.strictEqual(a.level, 'warn'); assert.strictEqual(a.text.length, 200);
+  pump({ source: 'adapter', data: { event: 'alert', text: 'no key' } });                 // ignored
+  pump({ source: 'adapter', data: { event: 'alert', key: 'k2', text: 42 } });            // coerced
+  assert.strictEqual(st.alerts.find(a => a.key === 'k2').text, '42');
+  pump({ source: 'adapter', data: { event: 'resolve', key: 'mqtt-down' } });
+  assert.ok(!st.alerts.some(a => a.key === 'mqtt-down'));
+  send({ type: 'ack', alert: st.alerts.find(a => a.key === 'ip-changed').id });
+  assert.ok(!st.alerts.some(a => a.key === 'ip-changed'));
+  pump({ source: 'adapter', data: { event: 'resolve', key: 'k2' } });
+  console.log('✓ adapter alert / resolve events');
+}
+
 console.log('OK — all scenarios pass');
