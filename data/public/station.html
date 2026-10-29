@@ -319,7 +319,7 @@ function setView(v) {
   $('mon').hidden = $('monLinks').hidden = v === 'desk';
   document.querySelector('.screen').dataset.v = v;
   document.querySelector('.appbar .title small').textContent = v === 'desk' ? 'Điều phối · Dispatch' : 'Giám sát · Monitor';
-  if (v === 'mon' && App.site) { render(); if (vm) vm.resize(); }   // the canvas had a 0×0 box while hidden
+  if (v === 'mon' && App.site) render();
 }
 $('views').onclick = e => { const b = e.target.closest('[data-view]'); if (b) setView(b.dataset.view); };
 setView(['desk', 'mon'].includes(qs.get('view')) ? qs.get('view') : me && me.role === 'ql' ? 'mon' : 'desk');
@@ -498,7 +498,7 @@ function renderVmap() {
   const S = App.site;
   $('map').style.display = 'none'; $('vmap').hidden = false;
   setHTML($('legend'), '<p class="vhint">Bản đồ do robot tự quét. Chạm bàn để chọn cho nhiệm vụ; điểm dừng chỉnh trong “Cấu hình”.</p>');
-  if (!vm) { vm = VMap($('vmap'), { onTap: (x, y, id) => { if (id && S.points[id] && S.points[id].kind === 'table') choose('t', id); } }); vm.resize(); pollVmap(); setInterval(pollVmap, 10000); }
+  if (!vm) { vm = VMap($('vmap'), { fit: true, onTap: (x, y, id) => { if (id && S.points[id] && S.points[id].kind === 'table') choose('t', id); } }); pollVmap(); setInterval(pollVmap, 10000); }
   const r = S.robots.find(x => x.driver === 'valetudo'), P = (r && r.valetudo.points) || {};
   const sel = new Set(F.tab === 'deliver' ? F.tables : F.tab === 'bus' ? [F.table] : [F.to]);
   const points = {};
@@ -507,7 +507,6 @@ function renderVmap() {
     .map(x => ({ id: x.id, ...x.pos, tone: robotStatus(x)[1], ring: x.halt === 'blocked' || x.nav === 'wait' }));
   vm.draw({ points, robots });
 }
-addEventListener('resize', () => vm && vm.resize());
 function renderMap() {
   if (!App.site) return;
   $('tools').hidden = $('routeLnk').hidden = !hasSim();

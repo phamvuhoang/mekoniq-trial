@@ -1,6 +1,7 @@
 // Valetudo map on a <canvas>: floor / walls / rooms from the compact map served at /api/map/:robot, plus the
 // site's taught points (robot cm) and the robots themselves. Shared by station.html (view) and setup.html (place points).
-//   const vm = VMap(canvas, { onTap(x, y, hitId) });   // x,y in robot cm; hitId = point under the finger or null
+//   const vm = VMap(canvas, { onTap(x, y, hitId), fit });   // x,y in robot cm; hitId = point under the finger or null
+//   fit: true -> a ResizeObserver keeps the canvas pixels matched to its CSS box (window resize, alert strips, hidden -> shown)
 //   vm.setMap(map); vm.setZoom(1|2, centre?); vm.draw({ points, robots, charger });
 //   vm.toMap(clientX, clientY) -> {x, y};  vm.hit(clientX, clientY) -> id | null
 //   vm.resize()   // match the canvas pixels to its CSS box (× devicePixelRatio) and redraw; no-op while hidden
@@ -113,6 +114,7 @@ function VMap(canvas, opts = {}) {
     for (const [id, p] of Object.entries(last.points || {})) { const [x, y] = toPx(p.x, p.y), d = Math.hypot(x - px, y - py); if (d < bd) { bd = d; best = id; } }
     return best;
   }
+  if (opts.fit) new ResizeObserver(resize).observe(canvas);   // setting canvas.width/height doesn't change the CSS box: no loop
   canvas.addEventListener('click', e => { if (opts.onTap) { const { x, y } = toMap(e.clientX, e.clientY); opts.onTap(x, y, hit(e.clientX, e.clientY)); } });
   return { setMap, setZoom, draw, toMap, hit, resize, get map() { return map; } };
 }
