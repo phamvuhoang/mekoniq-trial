@@ -607,4 +607,33 @@ scenario('khách báo đã chuyển khoản -> đơn của bàn chuyển paid-cl
   assert.deepStrictEqual(st.orders.map(o => o.status), ['paid-claimed', 'new']);
 });
 
+// ---- Final review fixes ----
+scenario('review: cảnh báo khách không đẩy mất cảnh báo dừng khẩn cấp', () => {
+  send({ type: 'estop', robot: 'R1' });
+  for (let i = 0; i < 25; i++) send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }, { id: 'trada', qty: 1 }] });
+  assert.ok(st.alerts.some(a => a.key === 'es-R1'), 'e-stop alert kept');
+  assert.ok(st.alerts.length <= 20);
+});
+
+scenario('review: Đã biết hoá đơn / chuyển khoản -> đóng đơn của bàn', () => {
+  send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }] });
+  send({ type: 'order', table: 'T06', items: [{ id: 'pho', qty: 1 }] });
+  send({ type: 'call', point: 'T05', what: 'bill' });
+  send({ type: 'ack', alert: st.alerts.find(a => a.key === 'call-bill-T05').id });
+  assert.deepStrictEqual(st.orders.map(o => o.table), ['T06'], 'T05 closed, next party starts clean');
+  send({ type: 'call', point: 'T06', what: 'paid', amount: 65000 });
+  send({ type: 'ack', alert: st.alerts.find(a => a.key === 'call-paid-T06').id });
+  assert.deepStrictEqual(st.orders, []);
+});
+
+scenario('review: khách huỷ món sau khi bếp đã đổi bàn -> không huỷ nhầm bàn mới', () => {
+  send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T05'], robot: 'R1' });
+  const id = last().id;
+  send({ type: 'retarget', mission: id, stop: 1, to: 'T07' });
+  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer', table: 'T05' });
+  assert.strictEqual(M(id).stops[1].status, 'pending');
+  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer', table: 'T07' });
+  assert.strictEqual(M(id).status, 'cancelled');
+});
+
 console.log('OK — all scenarios pass');
