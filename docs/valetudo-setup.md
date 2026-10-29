@@ -39,7 +39,7 @@ Nên bật **persistent map** (khoá bản đồ): robot tạo lại bản đồ
 
 ## 2. Khai robot và bàn trong trang Cấu hình
 
-Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → thẻ **Cấu hình**; màn trạm → **Giám sát** cũng có liên kết **Cấu hình ↗** trên thanh trên). Bốn tab nằm trên thanh trên cùng: **Điểm & bản đồ · Robot · Vai trò & thời gian · Sao lưu**; nút **Lưu** / **Huỷ thay đổi** ở góc phải. Ai có link cũng vào được.
+Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → thẻ **Cấu hình**; màn trạm → **Giám sát** cũng có liên kết **Cấu hình ↗** trên thanh trên). Các tab nằm trên thanh trên cùng: **Điểm & bản đồ · Robot · Vai trò & thời gian · Khách hàng · Sao lưu · Hệ thống**; nút **Lưu** / **Huỷ thay đổi** ở góc phải. Ai có link cũng vào được.
 
 1. Tab **Robot**: R1 chọn **Robot thật** (không phải *Giả lập*) → ô *Topic MQTT* = `<prefix>/<identifier>` ghi ở bước 1 (vd. `valetudo/InsecureYellowishGoldfish`). Các núm khác để mặc định. Bấm **Lưu**.
    Sau vài giây, màn trạm `station.html?role=ql` phải thấy R1 có pin. Chưa thấy → bước 4a.
@@ -52,6 +52,20 @@ Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → 
 
 Điểm dừng tốt: nằm trên lối đi, cạnh mép bàn 30–50 cm về phía khách dễ lấy; không chấm vào giữa bàn hay chỗ ghế kéo ra.
 Robot **vẽ lại bản đồ** (reset map) thì mọi toạ độ sai → bật *persistent map* trong Valetudo. Trang Cấu hình cảnh báo vàng khi thấy kích thước bản đồ đổi.
+
+## 2b. Tính năng cho khách (tuỳ chọn, mặc định tắt)
+
+Tab **Khách hàng** → thẻ *Tính năng cho khách*: bật từng mục rồi **Lưu**. Tắt thì nút ẩn khỏi trang QR / màn robot và hệ thống cũng từ chối lệnh đó (ghi nhật ký cảnh báo).
+
+| Tính năng | Cần gì | Khách thấy | Nhân viên thấy |
+|---|---|---|---|
+| **Gọi nhân viên / hoá đơn** | không | Trang QR: 2 nút dưới cùng (nghỉ 30 s sau mỗi lần chạm). Màn robot: *Gọi nhân viên* khi giao món / dẫn khách | Mọi trạm: tiếng *ding* + dải cảnh báo "Bàn 05 gọi nhân viên". Chạm thêm không tạo cảnh báo mới tới khi bấm **Đã biết** |
+| **Dẫn khách tới bàn** | robot đang chờ ở một trạm (gọi robot tới trạm) hoặc ở điểm loại *cửa đón khách* (`entrance`, thêm trong `site.json`) | Màn robot: *Dẫn tôi tới bàn* → chọn bàn → *Đi chậm hơn* / *Đã tới bàn* | Nhật ký. Không ai bấm *Đã tới bàn* sau *Chờ khách nhận món* giây → robot tự về |
+| **Gọi món trên robot** | thực đơn (bảng bên trái tab Khách hàng: danh mục + trạm làm, món + giá) | Màn robot: *Gọi món* khi robot đứng yên → chọn bàn nếu robot không ở bàn → *Gửi bếp* | Mỗi trạm làm một cảnh báo chỉ gồm món của mình. Bếp tự gửi lệnh giao như thường |
+| **Thanh toán VietQR** | bật cả *Gọi nhân viên*; mã ngân hàng + số tài khoản (thẻ Thanh toán). Không có Internet → tải ảnh QR tĩnh | Màn robot ở bàn có món đã gọi: *Thanh toán* → hoá đơn + QR → *Tôi đã chuyển khoản* / *Tiền mặt / thẻ* | "Bàn 05 báo đã chuyển khoản · 140.000đ" — **kiểm tra app ngân hàng** trước khi xác nhận với khách |
+
+Robot Valetudo không chỉnh được tốc độ: *Đi chậm hơn* chỉ ghi nhật ký "không hỗ trợ, bỏ qua".
+**Đổi bàn** (luôn bật): bếp gửi nhầm bàn mà robot đã đi → hàng chờ / thẻ *Lệnh gần nhất* → **Đổi bàn** → chạm bàn đúng. Robot đã tới bàn thì không đổi được (dùng *Trả lại bếp*).
 
 ## 3. Núm chỉnh robot (tab Robot → **Nâng cao · 9 thông số**, chỉ khi cần)
 
