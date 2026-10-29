@@ -6,12 +6,12 @@
 <style>
   /* Route designer (spec 4.4): map card | 360px aside. Portrait: map on top, aside in two columns. */
   .screen > .body { grid-template: minmax(0, 1fr) / minmax(0, 1fr) 360px; }
-  .appbar .btn { min-height: 40px; padding: 8px 14px; border-color: #3c5f5c; color: #fff; }
+  .appbar .btn { min-height: 40px; padding: 8px 14px; border-color: #3c5f5c; color: var(--card); }
   .appbar .btn.primary { border-color: var(--mint); color: var(--deep); }
   .appbar .btn.armed { border-color: var(--danger); }
+  .appbar .pill { color: var(--deep); }
   .appbar .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-  .appbar .pill { background: rgba(255, 255, 255, .1); color: #cfe0db; }
-  .dirty { color: var(--accent); font-weight: 800; font-size: 13px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dirty { color: var(--accent); font-weight: 800; font-size: 13px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .mapcard { display: flex; flex-direction: column; padding: 12px 14px; min-height: 0; }
   .mapcard .eyebrow { flex: none; }
@@ -24,11 +24,11 @@
   #ed .rbm text { font-size: .3px; fill: var(--deep); }
   #ed .rbm { pointer-events: none; }
   /* Spec 4.4 map palette: faint tables, thicker lanes, round stops, white bends. */
-  #ed .tbl { fill: #e3ece8; stroke: #7d959b; }
+  #ed .tbl { stroke: #7d959b; }
   #ed .lane { stroke-width: .12; }
   #ed .lane.slow { stroke-width: .24; }
-  #ed .lane.sel { stroke-width: .26; filter: drop-shadow(0 0 .12px rgba(7, 29, 33, .45)); }
-  #ed .node { fill: #fff; stroke: #7d959b; }
+  #ed .lane.sel { stroke-width: .26; filter: drop-shadow(0 0 .12px var(--deep)); }
+  #ed .node { fill: var(--card); stroke: #7d959b; }
   #ed .node.stop { fill: var(--green); stroke: none; }
   #ed .node.sel, #ed .node.from { fill: var(--accent); stroke: var(--deep); }
 
@@ -77,6 +77,7 @@
 </head><body>
 <div class="screen">
   <header id="bar"></header>
+  <div id="strips" aria-live="assertive"></div>
   <main class="body">
     <section class="card mapcard">
       <p class="eyebrow sm">Sơ đồ lộ trình · kéo điểm để chỉnh, chạm lối đi để sửa</p>
@@ -149,7 +150,9 @@ function draw() {
   panel(); check();
   $('apply').disabled = !dirty;
   $('revert').disabled = !dirty;
-  $('dirty').textContent = dirty ? '● Có thay đổi chưa áp dụng' + (newer ? ' — máy khác vừa cập nhật lộ trình, áp dụng sẽ ghi đè' : '') : '';
+  $('dirty').textContent = dirty ? '● Có thay đổi chưa áp dụng' : '';
+  // Another station saved while this draft is open: applying would overwrite theirs, so say it on every orientation.
+  setHTML($('strips'), dirty && newer ? '<div class="strip"><span class="kind">Cảnh báo</span><span class="grow">Máy khác vừa cập nhật lộ trình. Áp dụng bản nháp này sẽ ghi đè thay đổi của họ.</span></div>' : '');
   if (App.map) $('ver').textContent = 'Đang chạy: bản ' + App.map.v;
 }
 function drawRobots() {
@@ -275,7 +278,7 @@ addEventListener('keydown', e => {
 addEventListener('beforeunload', e => { if (dirty) e.preventDefault(); });
 
 $('apply').onclick = () => {
-  dirty = false;   // before send: the demo transport echoes the map synchronously
+  dirty = false; newer = false; draw();   // before send: the demo transport echoes the map synchronously
   send({ type: 'map', map: D, by: BY });
   toast('Đã áp dụng lộ trình — robot đang chạy tự tính lại đường');
 };
