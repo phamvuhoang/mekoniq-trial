@@ -39,21 +39,21 @@ Nên bật **persistent map** (khoá bản đồ): robot tạo lại bản đồ
 
 ## 2. Khai robot và bàn trong trang Cấu hình
 
-Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → ⚙️ Cấu hình; màn trạm tab Giám sát cũng có nút). Ai có link cũng vào được.
+Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → thẻ **Cấu hình**; màn trạm → **Giám sát** cũng có liên kết **Cấu hình ↗** trên thanh trên). Bốn tab nằm trên thanh trên cùng: **Điểm & bản đồ · Robot · Vai trò & thời gian · Sao lưu**; nút **Lưu** / **Huỷ thay đổi** ở góc phải. Ai có link cũng vào được.
 
-1. Thẻ **Robot**: R1 → *Topic MQTT* = `<prefix>/<identifier>` ghi ở bước 1 (vd. `valetudo/InsecureYellowishGoldfish`). Các núm khác để mặc định. Bấm **Lưu**.
+1. Tab **Robot**: R1 chọn **Robot thật** (không phải *Giả lập*) → ô *Topic MQTT* = `<prefix>/<identifier>` ghi ở bước 1 (vd. `valetudo/InsecureYellowishGoldfish`). Các núm khác để mặc định. Bấm **Lưu**.
    Sau vài giây, màn trạm `station.html?role=ql` phải thấy R1 có pin. Chưa thấy → bước 4a.
-2. Thẻ **Điểm & bản đồ**: bản đồ robot tự quét hiện lên (cần *Provide map data* ở bước 1; robot phải đã chạy một vòng để có bản đồ). Bấm **+ Thêm bàn** cho từng bàn, sửa tên nếu cần. Bếp, bar, rửa chén, sạc đã có sẵn.
+2. Tab **Điểm & bản đồ**: bản đồ robot tự quét hiện lên (cần *Provide map data* ở bước 1; robot phải đã chạy một vòng để có bản đồ). Bấm **+ Thêm bàn** cho từng bàn, sửa tên nếu cần. Bếp, bar, rửa chén, sạc đã có sẵn.
 3. Định vị từng điểm (bếp, rồi từng bàn), chọn một trong hai cách:
-   - **Dùng vị trí robot** (chính xác nhất): lái robot tới đúng chỗ cần dừng bằng app Valetudo (hoặc bê robot tới), đợi chấm robot trên bản đồ nhảy tới đó, chọn điểm trong danh sách → bấm **📍 Dùng vị trí robot**.
+   - **Dùng vị trí robot** (chính xác nhất): lái robot tới đúng chỗ cần dừng bằng app Valetudo (hoặc bê robot tới), đợi chấm robot trên bản đồ nhảy tới đó, chọn điểm trong danh sách → bấm **Dùng vị trí robot**.
    - Chấm lên bản đồ: chọn điểm trong danh sách → chạm lên bản đồ. Chỉnh ±10 cm bằng các mũi tên.
-   Bấm **▶ Chạy thử tới đây** (robot đang rảnh) để xem robot có tới đúng chỗ không. Dock không cần định vị — robot tự về sạc (`HOME`).
+   Bấm **Chạy thử tới đây** (robot đang rảnh) để xem robot có tới đúng chỗ không. Dock không cần định vị — robot tự về sạc (`HOME`).
 4. **Lưu**. Có hiệu lực ngay, không cần khởi động lại. Trang nào mở sẵn cũng tự cập nhật.
 
 Điểm dừng tốt: nằm trên lối đi, cạnh mép bàn 30–50 cm về phía khách dễ lấy; không chấm vào giữa bàn hay chỗ ghế kéo ra.
 Robot **vẽ lại bản đồ** (reset map) thì mọi toạ độ sai → bật *persistent map* trong Valetudo. Trang Cấu hình cảnh báo vàng khi thấy kích thước bản đồ đổi.
 
-## 3. Núm chỉnh robot (thẻ Robot, chỉ khi cần)
+## 3. Núm chỉnh robot (tab Robot → **Nâng cao · 9 thông số**, chỉ khi cần)
 
 | Núm | Mặc định | Ý nghĩa |
 |---|---|---|
@@ -83,7 +83,7 @@ Phải thấy `status docked`/`idle`, `level 87`, `$state ready`. Không thấy 
 
 b. **Adapter nhận đúng** — mở `http://<IP>:1880/station.html?role=ql`: R1 có pin, không báo "mất kết nối".
 
-c. **Lệnh tay** — nút **▶ Chạy thử tới đây** trong trang Cấu hình, hoặc (người đứng cạnh robot):
+c. **Lệnh tay** — nút **Chạy thử tới đây** trong tab Điểm & bản đồ, hoặc (người đứng cạnh robot):
 ```sh
 T=valetudo/InsecureYellowishGoldfish
 mosquitto_pub -p 1884 -t $T/GoToLocationCapability/go/set -m '{"coordinates":{"x":2351,"y":2544}}'
