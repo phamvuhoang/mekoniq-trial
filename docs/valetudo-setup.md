@@ -100,6 +100,8 @@ e. **Dừng / chạy tiếp / dừng khẩn** khi robot đang chạy: robot ph�
 
 | Hiện tượng | Nguyên nhân / cách xử lý |
 |---|---|
+| "Broker MQTT trong máy không chạy" (dải đỏ trên trạm) | Mosquitto trên điện thoại đã tắt; mọi robot thật mất điều khiển. Termux: `mosquitto -c ~/robot/mosquitto.conf -d` (hoặc chạy lại install). Broker chạy lại là dải tự tắt. |
+| "IP điện thoại đã đổi từ … sang …" | Router cấp IP mới: robot và mã QR vẫn trỏ IP cũ. Valetudo → Connectivity → MQTT → Host = IP mới; mở lại trang trên tablet; in lại QR; rồi trang Cấu hình → **Hệ thống** → **Đã cập nhật robot và QR**. Gốc: đặt IP cố định cho điện thoại trên router (DHCP reservation). |
 | "R1 mất kết nối" | Robot báo `$state lost` hoặc chưa gửi gì: kiểm tra bậc 4a, IP điện thoại, robot còn bật Wi-Fi. |
 | "R1 không có lộ trình tới …" | Điểm đó chưa được định vị cho R1. Trang Cấu hình → Điểm & bản đồ → định vị → Lưu (không cần khởi động lại). |
 | "R1 gặp vật cản — dừng chờ" (màn robot: Xin nhường đường) | Bình thường: robot dừng giữa đường / không nhúc nhích / Valetudo báo không tới được đích. Robot tự gửi lại lệnh sau `retrySec`. Không cần làm gì; muốn đi ngay thì bấm **Đã dọn lối đi**. |
@@ -113,6 +115,7 @@ e. **Dừng / chạy tiếp / dừng khẩn** khi robot đang chạy: robot ph�
 ## 6. Checklist đầu ca
 
 - Robot online trên màn trạm, pin ≥ 80 %, không cảnh báo.
+- Trang Cấu hình → **Hệ thống**: "Mọi thứ bình thường".
 - Trang Cấu hình không có cảnh báo vàng về bản đồ.
 - Chạy thử một chuyến: bếp giao 1 bàn gần → robot tới, về dock.
 - Lối đi chính không có ghế kéo ra, thùng, dây điện; thảm/ngưỡng cửa robot qua được.

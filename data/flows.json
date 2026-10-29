@@ -101,7 +101,8 @@
     "wires": [
       [
         "sim",
-        "val"
+        "val",
+        "health_fn"
       ]
     ]
   },
@@ -267,6 +268,150 @@
     "headers": {},
     "x": 560,
     "y": 420,
+    "wires": []
+  },
+  {
+    "id": "health_fn",
+    "type": "function",
+    "z": "tab",
+    "name": "Health",
+    "func": "// System health for setup.html tab \"Hệ thống\" — logic in lib/health.js + valetudo.health() (unit-tested).\n// global 'health' (memory: rebuilt every tick) is served by GET /api/health; 'lastIp' (default: on disk) survives restarts.\nconst { health: H, valetudo: V, seed } = global.get('mekoniq');\nconst site = global.get('site') || seed;\nconst now = Date.now();\nif (!(now - (flow.get('ipAt', 'memory') || 0) < 10000)) {   // IP refreshed every 10 s, used from the cache meanwhile\n    flow.set('ipAt', now, 'memory');\n    H.localIp(ip => flow.set('ip', ip, 'memory'));\n}\nconst v = V.health(flow.get('val') || V.init(site), site, now);\nconst h = H.build({ ip: flow.get('ip', 'memory'), lastIp: global.get('lastIp'), link: v.link,\n    clients: global.get('mqttClients', 'memory'), robots: v.robots, now });\nif (h.server.firstRun) { global.set('lastIp', h.server.ip); flow.set('ipFirst', true, 'memory'); }\nif (flow.get('ipFirst', 'memory')) h.server.firstRun = true;   // shown until restart: one IP seen, cannot tell yet if it is fixed\nconst prev = global.get('health', 'memory');\nglobal.set('health', h, 'memory');\nconst was = !!(prev && prev.server.ipChanged), c = h.server.ipChanged;\nif (!!c === was) return null;\nreturn { topic: 'adapter', payload: c\n    ? { event: 'alert', key: 'ip-changed', level: 'error', text: `IP điện thoại đã đổi từ ${c.from} sang ${c.to} — robot và mã QR vẫn trỏ về ${c.from}. Trang Cấu hình → Hệ thống` }\n    : { event: 'resolve', key: 'ip-changed' } };",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 520,
+    "wires": [
+      [
+        "orch"
+      ]
+    ]
+  },
+  {
+    "id": "sys_in",
+    "type": "mqtt in",
+    "z": "tab",
+    "name": "$SYS clients",
+    "topic": "$SYS/broker/clients/connected",
+    "qos": "0",
+    "datatype": "utf8",
+    "broker": "mqtt_broker",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 580,
+    "wires": [
+      [
+        "sys_fn"
+      ]
+    ]
+  },
+  {
+    "id": "sys_fn",
+    "type": "function",
+    "z": "tab",
+    "name": "mqttClients (memory ctx)",
+    "func": "// Mosquitto $SYS (every 10 s): clients connected to the broker, for setup.html \"Hệ thống\". '#' does not match $SYS.\nglobal.set('mqttClients', Number(msg.payload), 'memory');\nreturn null;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 580,
+    "wires": [
+      []
+    ]
+  },
+  {
+    "id": "health_in",
+    "type": "http in",
+    "z": "tab",
+    "name": "GET /api/health",
+    "url": "/api/health",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 640,
+    "wires": [
+      [
+        "health_out_fn"
+      ]
+    ]
+  },
+  {
+    "id": "health_out_fn",
+    "type": "function",
+    "z": "tab",
+    "name": "health report",
+    "func": "// setup.html tab \"Hệ thống\": the Health node's latest report. Never contains the MQTT password.\nconst h = global.get('health', 'memory');\nmsg.statusCode = h ? 200 : 503;\nmsg.headers = { 'Cache-Control': 'no-store' };\nmsg.payload = h || { error: 'not ready' };\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 640,
+    "wires": [
+      [
+        "health_res"
+      ]
+    ]
+  },
+  {
+    "id": "ack_in",
+    "type": "http in",
+    "z": "tab",
+    "name": "POST /api/health/ack",
+    "url": "/api/health/ack",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 150,
+    "y": 700,
+    "wires": [
+      [
+        "ack_fn"
+      ]
+    ]
+  },
+  {
+    "id": "ack_fn",
+    "type": "function",
+    "z": "tab",
+    "name": "ack IP change",
+    "func": "// \"Đã cập nhật robot và QR\": the current IP becomes the expected one; the Health node then resolves 'ip-changed'.\nconst h = global.get('health', 'memory');\nconst ip = h && h.server.ip;\nif (ip) global.set('lastIp', ip);\nmsg.statusCode = ip ? 200 : 400;\nmsg.headers = { 'Cache-Control': 'no-store' };\nmsg.payload = ip ? { ok: true } : { error: 'no ip' };\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 700,
+    "wires": [
+      [
+        "health_res"
+      ]
+    ]
+  },
+  {
+    "id": "health_res",
+    "type": "http response",
+    "z": "tab",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 600,
+    "y": 670,
     "wires": []
   }
 ]

@@ -551,3 +551,12 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.strictEqual(V.health(st2, SITE, now).robots.R1.seenAt, now);
   console.log('✓ health: link alerts once, wifi facts, garbage ignored, kept across rebuild');
 }
+{
+  const st = V.init(SITE);   // state saved by an older adapter (flow context on disk) has no seenAt / mapAt / wifi
+  for (const k of ['seenAt', 'mapAt', 'wifi']) delete st.robots.R1[k];
+  delete st.link;
+  const h = V.health(st, SITE, 1e12);
+  assert.strictEqual(h.link, true);
+  assert.deepStrictEqual([h.robots.R1.seenAt, h.robots.R1.mapAt, h.robots.R1.wifi], [0, 0, null]);
+  console.log('✓ health: state saved before the health fields existed');
+}

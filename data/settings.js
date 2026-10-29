@@ -9,7 +9,7 @@ module.exports = {
     // Editor login: set NODE_RED_ADMIN_HASH (npx node-red admin hash-pw). Unset = open editor, LAN-visible if HOST=0.0.0.0.
     adminAuth: process.env.NODE_RED_ADMIN_HASH ? { type: "credentials", users: [{ username: "admin", password: process.env.NODE_RED_ADMIN_HASH, permissions: "*" }] } : undefined,
     functionGlobalContext: {
-        mekoniq: { orchestrator: require("./lib/orchestrator"), simulator: require("./lib/simulator"), valetudo: require("./lib/valetudo"), seed: require("./site.json"), siteLib: require("./lib/site") }
+        mekoniq: { orchestrator: require("./lib/orchestrator"), simulator: require("./lib/simulator"), valetudo: require("./lib/valetudo"), seed: require("./site.json"), siteLib: require("./lib/site"), health: require("./lib/health") }
     },
     // UI pages + the shared route module (lib/route.js is plain CommonJS, also loaded by the map editor).
     httpStatic: [

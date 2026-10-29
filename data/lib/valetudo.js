@@ -337,8 +337,8 @@ function wifi(b, k, v) {
 function health(st, site, now) {
   const robots = {};
   for (const [id, b] of Object.entries(st.robots))
-    robots[id] = { topic: b.topic, online: b.online, status: b.status, battery: b.battery, seenAt: b.seenAt, mapAt: b.mapAt, wifi: b.wifi };
-  return { link: st.link, robots };
+    robots[id] = { topic: b.topic, online: b.online, status: b.status, battery: b.battery, seenAt: b.seenAt || 0, mapAt: b.mapAt || 0, wifi: b.wifi || null };
+  return { link: st.link !== false, robots };   // state saved by an older adapter has none of these
 }
 
 function telemetry(st, site) {
