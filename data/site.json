@@ -66,11 +66,19 @@
       "kind": "dock"
     }
   },
+  "featurePolicyVersion": 2,
+  "serviceProfile": "custom",
   "features": {
-    "call": false,
+    "callStaff": false,
+    "requestBill": false,
     "guide": false,
     "order": false,
-    "pay": false
+    "pay": false,
+    "busRobot": false
+  },
+  "customerCancel": "request",
+  "service": {
+    "requestStation": null
   },
   "notes": [
     "Không hành",
@@ -85,6 +93,7 @@
   "payment": {
     "bank": "",
     "account": "",
-    "name": ""
+    "name": "",
+    "verification": "staff"
   }
 }

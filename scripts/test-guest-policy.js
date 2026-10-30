@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const harness = require('./helpers/orchestrator-harness');
 const Site = require('../data/lib/site');
 const seed = require('../data/site.demo.json');
+const legacy = require('./helpers/legacy-site')(seed);   // the demo as the previous version saved it
 
 const DAY = 24 * 3600 * 1000;
 const v2 = () => harness(Site.normalize(seed, seed).site);   // live site already saved as v2
@@ -42,7 +43,7 @@ test('prepare and claim over WS: a claimed amount never changes the bill', () =>
   const a = h.st.alerts.find(x => x.key === 'bill-claim-1');
   assert.ok(a && a.level === 'warn' && a.text.includes('Bàn 01') && a.text.includes('#1') && a.text.includes('1.000đ'), a && a.text);
   const ding = msgs(r).find(p => p.type === 'event' && p.stationSound === 'ding');
-  assert.equal(ding.point, 'bar', 'ding goes to the request station');
+  assert.equal(ding.point, 'kitchen', 'ding goes to the request station');
 
   const bill = JSON.stringify(h.st.bills);
   h.send({type: 'ack', alert: a.id});
@@ -140,7 +141,7 @@ test('an open order for a table already gone from the site never blocks a save',
 });
 
 test('legacy config: hello sends the migrated v2 site without saving it', () => {
-  const h = harness();   // demo seed is pre-v2
+  const h = harness(structuredClone(legacy));
   const raw = JSON.stringify(h.site);
   const r = h.send({type: 'hello'});
   const s = msgs(r).find(p => p.type === 'site');
@@ -155,7 +156,7 @@ test('legacy config: hello sends the migrated v2 site without saving it', () => 
 
 test('importing an old file: setup normalizes it to v2 and the save goes through', () => {
   const h = v2();
-  const file = structuredClone(seed); file.name = 'Nhập từ tệp';
+  const file = structuredClone(legacy); file.name = 'Nhập từ tệp';
   const {site, errors} = Site.normalize(file, h.site);
   assert.deepEqual(errors, []);
   site.rev = h.site.rev;
@@ -165,12 +166,12 @@ test('importing an old file: setup normalizes it to v2 and the save goes through
 
 test('stale setup page: a pre-v2 payload cannot overwrite a v2 live site', () => {
   const h = v2();
-  const old = structuredClone(seed); old.rev = h.site.rev;
+  const old = structuredClone(legacy); old.rev = h.site.rev;
   const r = h.send({type: 'siteSave', site: old, requestId: 'old'});
   const t = reply(h).text;
   assert.ok(t.startsWith('Không lưu: ') && t.includes('tải lại'), t);
   assert.deepEqual([r.site, h.site.rev], [undefined, 0]);
-  const l = harness();   // live site still pre-v2: a pre-v2 payload is fine, normalize migrates it
+  const l = harness(structuredClone(legacy));   // live site still pre-v2: a pre-v2 payload is fine, normalize migrates it
   const r2 = save(l, s => { s.name = 'Cũ'; });
   assert.deepEqual([r2.site.name, r2.site.featurePolicyVersion], ['Cũ', 2]);
 });
@@ -229,10 +230,10 @@ test('callStaff off / requestBill on: only the bill request goes through', () =>
   assert.deepEqual([rep.ok, rep.code, rep.requestId], [false, 'disabled', 'a']);
   const r = h.send({type: 'call', point: 'T01', what: 'bill', requestId: 'b'});
   const a = alertOf(h, 'call-bill-T01');
-  assert.deepEqual([a.text, a.station], ['Bàn 01 yêu cầu tính tiền', 'bar']);
+  assert.deepEqual([a.text, a.station], ['Bàn 01 yêu cầu tính tiền', 'kitchen']);
   rep = reply(h);
   assert.deepEqual([rep.ok, rep.requestId], [true, 'b']);
-  assert.deepEqual(dings(r).map(e => e.point), ['bar']);
+  assert.deepEqual(dings(r).map(e => e.point), ['kitchen']);
   assert.ok(!JSON.stringify(h.st).includes('xin hoá đơn'));
 });
 
@@ -259,8 +260,8 @@ test('pay works without callStaff or requestBill: a claim still reaches the requ
   order1(h); prepare(h);
   const r = h.send({type: 'billClaim', bill: 1, rev: 1, requestId: 'c'});
   assert.equal(reply(h).ok, true);
-  assert.equal(alertOf(h, 'bill-claim-1').station, 'bar');
-  assert.deepEqual(dings(r).map(e => e.point), ['bar']);
+  assert.equal(alertOf(h, 'bill-claim-1').station, 'kitchen');
+  assert.deepEqual(dings(r).map(e => e.point), ['kitchen']);
   delete h.site.service;   // missing service block: the claim is still recorded, routed to every station
   h.send({type: 'billVoid', bill: 1, rev: 2, reason: 'Nhầm', requestId: 'v'});
   prepare(h, {requestId: 'p2'});
@@ -271,10 +272,10 @@ test('pay works without callStaff or requestBill: a claim still reaches the requ
 
 test('call routing and dedupe: one alert per table and type until ack, ding at the request station', () => {
   const h = v2();
-  h.site.service.requestStation = 'kitchen';
+  h.site.service.requestStation = 'bar';   // not the seed's station
   let r = h.send({type: 'call', point: 'T03', what: 'staff', requestId: '1'});
-  assert.equal(alertOf(h, 'call-staff-T03').station, 'kitchen');
-  assert.deepEqual(dings(r).map(e => e.point), ['kitchen']);
+  assert.equal(alertOf(h, 'call-staff-T03').station, 'bar');
+  assert.deepEqual(dings(r).map(e => e.point), ['bar']);
   const logs = h.st.log.length;
   r = h.send({type: 'call', point: 'T03', what: 'staff', requestId: '2'});   // a new tap while the alert is open
   assert.deepEqual([reply(h).ok, reply(h).duplicate], [true, undefined]);
@@ -406,7 +407,7 @@ test('customer cancel: refused under the request policy (old clients too), table
 
 test('customer cancel under direct: needs the table, refuses a stop moved to another table', () => {
   const h = v2();
-  assert.equal(h.site.customerCancel, 'direct');   // migrated demo
+  h.site.customerCancel = 'direct';   // the demo seed uses 'request'
   const m = deliver(h);
   h.send({type: 'cancelStop', mission: m.id, stop: 1, why: 'customer'});
   assert.deepEqual([reply(h).code, m.stops[1].status], ['invalid', 'pending']);

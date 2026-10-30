@@ -1,6 +1,8 @@
 // Scenario test for orchestrator + simulator with a fake clock: node scripts/test.js
 const assert = require('assert');
-const O = require('../data/lib/orchestrator'), S = require('../data/lib/simulator'), site = require("../data/site.demo.json");
+const O = require('../data/lib/orchestrator'), S = require('../data/lib/simulator');
+// These scenarios cancel as the guest directly; the demo seed itself uses the 'request' policy.
+const site = { ...require("../data/site.demo.json"), customerCancel: 'direct' };
 
 let now = 1e12;
 const st = O.init(site, now), sim = S.init(site);
@@ -411,7 +413,7 @@ scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi g
   send({ type: 'call', point: 'T05', what: 'staff', by: 'Khách Bàn 05 (QR)' });
   assert.strictEqual(calls().length, 1);
   assert.strictEqual(calls()[0].text, 'Bàn 05 gọi nhân viên');
-  assert.ok(events.some(e => e.stationSound === 'ding' && e.point === 'bar'), 'the request station hears it');
+  assert.ok(events.some(e => e.stationSound === 'ding' && e.point === site.service.requestStation), 'the request station hears it');
   events = [];
   for (let i = 0; i < 9; i++) send({ type: 'call', point: 'T05', what: 'staff' });
   assert.strictEqual(calls().length, 1, 'ten taps, one alert');
@@ -432,12 +434,12 @@ scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi g
 });
 
 {
-  const off = JSON.parse(JSON.stringify(site)); off.features = { ...off.features, call: false };
+  const off = require('./helpers/legacy-site')(site); off.features.call = false;   // pre-v2 config: call:false = no calls
   const st7 = O.init(off, now);
   const r7 = O.handle(st7, off, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
   assert.strictEqual(st7.alerts.length, 0, 'feature off: no alert');
   assert.strictEqual(JSON.parse(r7.ui[0].payload).code, 'disabled');
-  const none = JSON.parse(JSON.stringify(site)); delete none.features;
+  const none = JSON.parse(JSON.stringify(off)); delete none.features;
   const st8 = O.init(none, now);
   O.handle(st8, none, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
   assert.strictEqual(st8.alerts.length, 0, 'no features block = all off');

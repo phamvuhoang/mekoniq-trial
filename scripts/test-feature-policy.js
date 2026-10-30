@@ -5,9 +5,20 @@ const Policy = require('../data/lib/feature-policy');
 const Site = require('../data/lib/site');
 const O = require('../data/lib/orchestrator');
 const seed = require('../data/site.demo.json');
+const legacy = () => require('./helpers/legacy-site')(seed);   // the demo as the previous version saved it
+test('both seeds are explicit v2 and normalize to themselves', () => {
+  const prod = require('../data/site.json');
+  for (const s of [prod, seed]) {
+    assert.equal(s.featurePolicyVersion, 2);
+    assert.deepEqual(Site.normalize(structuredClone(s), s), {site: s, errors: []});
+  }
+  assert.deepEqual([prod.serviceProfile, prod.features, prod.customerCancel, prod.service, prod.payment.verification],
+    ['custom', Policy.preset('custom').features, 'request', {requestStation: null}, 'staff']);
+  assert.deepEqual([seed.serviceProfile, seed.customerCancel, seed.service, seed.payment.verification], ['custom', 'request', {requestStation: 'kitchen'}, 'staff']);
+  for (const k of Object.keys(seed.features)) assert.equal(Policy.readiness(seed, k).effective, true, `demo ${k} on and ready`);
+});
 test('legacy call splits without losing other flags', () => {
-  const old = structuredClone(seed);
-  delete old.featurePolicyVersion;
+  const old = legacy();
   old.features = {call:true, guide:false, order:true, pay:false};
   const next = Policy.migrate(old);
   assert.equal(next.featurePolicyVersion, 2);
@@ -35,7 +46,7 @@ const v2 = () => Site.normalize(structuredClone(seed), seed).site;
 const errs = site => Site.normalize(site, seed).errors;
 
 test('legacy migration keeps the other flags, metadata and new fields that are already valid', () => {
-  const old = {...structuredClone(seed), rev: 7, by: 'Quản lý', savedAt: 5, saveRequestId: 'r1',
+  const old = {...legacy(), rev: 7, by: 'Quản lý', savedAt: 5, saveRequestId: 'r1',
     features: {call: false, guide: true, order: 'yes', pay: true, busRobot: false}, customerCancel: 'request', serviceProfile: 'buffet'};
   const next = Policy.migrate(old);
   assert.deepEqual(next.features, {guide: true, order: false, pay: true, busRobot: false, callStaff: false, requestBill: false});
@@ -46,9 +57,9 @@ test('legacy migration keeps the other flags, metadata and new fields that are a
   assert.equal(Policy.migrate({...old, customerCancel: 'maybe', serviceProfile: 'x'}).customerCancel, 'direct');
 });
 test('legacy requestStation: valid kept, else first station by key order, else null', () => {
-  assert.equal(Policy.migrate(seed).service.requestStation, 'bar');
-  assert.equal(Policy.migrate({...seed, service: {requestStation: 'kitchen'}}).service.requestStation, 'kitchen');
-  assert.equal(Policy.migrate({...seed, service: {requestStation: 'T01'}}).service.requestStation, 'bar');
+  assert.equal(Policy.migrate(legacy()).service.requestStation, 'bar');
+  assert.equal(Policy.migrate({...legacy(), service: {requestStation: 'kitchen'}}).service.requestStation, 'kitchen');
+  assert.equal(Policy.migrate({...legacy(), service: {requestStation: 'T01'}}).service.requestStation, 'bar');
   assert.equal(Policy.migrate({points: {T01: {kind: 'table'}}}).service.requestStation, null);
 });
 test('v2 normalize is idempotent and never re-injects legacy defaults', () => {
@@ -108,7 +119,7 @@ test('alias call is dropped from v2 input without enabling callStaff', () => {
   assert.equal(s.features.callStaff, false);
 });
 test('custom unknown fields are kept through migrate and normalize', () => {
-  const old = {...structuredClone(seed), custom: {a: [1]}, features: {...seed.features, beta: true}};
+  const old = {...legacy(), custom: {a: [1]}, features: {...legacy().features, beta: true}};
   const s = Site.normalize(old, seed).site;
   assert.deepEqual(s.custom, {a: [1]});
   assert.equal(s.features.beta, true);
@@ -168,7 +179,7 @@ test('readiness: busRobot needs a table and the dish point', () => {
   assert.deepEqual(codes(s, 'busRobot'), ['no-dish']);
 });
 test('readiness accepts legacy sites', () => {
-  const r = Policy.readiness(seed, 'callStaff');
+  const r = Policy.readiness(legacy(), 'callStaff');
   assert.deepEqual(r, {enabled: true, ready: true, effective: true, reasons: []});
   assert.equal(Policy.readiness({}, 'busRobot').enabled, true);
   assert.equal(Policy.readiness(null, 'pay').ready, false);
@@ -184,5 +195,5 @@ test('orchestrator gate reads the v2 flags (legacy "call" = callStaff)', () => {
   assert.equal(alerts(s), 1);
   s.features.callStaff = false;
   assert.equal(alerts(s), 0);
-  assert.equal(alerts(seed), 1);
+  assert.equal(alerts(legacy()), 1);
 });

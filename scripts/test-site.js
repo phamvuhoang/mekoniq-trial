@@ -7,13 +7,14 @@ const errs = (mut) => { const s = clone(seed); mut(s); return S.normalize(s, see
 const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expected an error mentioning "${word}" in ${JSON.stringify(list)}`);
 
 {
-  // The seed is still pre-v2: normalize migrates it once, then a v2 site normalizes to itself.
-  const r = S.normalize(clone(seed), seed);
+  // The production seed is written as v2 with every feature off and normalizes to itself.
+  assert.deepStrictEqual(S.normalize(clone(seed), seed), { site: seed, errors: [] });
+  // The same site saved by the previous version (pre-v2) migrates once without enabling anything new.
+  const r = S.normalize(require('./helpers/legacy-site')(seed), seed);
   assert.deepStrictEqual(r.errors, []);
-  assert.deepStrictEqual(r.site, { ...seed, featurePolicyVersion: 2, serviceProfile: 'custom', customerCancel: 'direct', service: { requestStation: 'kitchen' },
-    features: { guide: false, order: false, pay: false, callStaff: false, requestBill: false, busRobot: true }, payment: { ...seed.payment, verification: 'staff' } });
+  assert.deepStrictEqual(r.site, { ...seed, customerCancel: 'direct', service: { requestStation: 'kitchen' }, features: { ...seed.features, busRobot: true } });
   assert.deepStrictEqual(S.normalize(clone(r.site), seed), r);
-  console.log('✓ seed migrates to v2, v2 normalizes to itself');
+  console.log('✓ v2 seed normalizes to itself, a pre-v2 site migrates to v2 once');
 }
 {
   has(errs(s => { s.points['1abc'] = { name: 'x', kind: 'table' }; }), '1abc');
