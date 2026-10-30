@@ -91,7 +91,7 @@ const robotsKey = site => JSON.stringify(site.robots.filter(ours).map(r => [r.id
 
 // What the robot has told us, and the trip in progress: both survive a rebuild (knob / point edited in setup.html,
 // which happens during service) as long as the topic is the same robot. A rebuild only swaps the knobs.
-const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'stateSeen', 'mapMeta', 'seenAt', 'mapAt', 'wifi'];
+const INGESTED = ['status', 'err', 'errRetry', 'battery', 'pos', 'online', 'stateSeen', 'mapMeta', 'seenAt', 'mapAt', 'wifi', 'recovering'];
 const TRIP = ['goal', 'pending', 'pendingSince', 'sentAt', 'seenMoving', 'checkUntil', 'paused', 'blocked', 'why', 'waiting', 'tries', 'retryAt', 'lastPos', 'progressAt', 'waitPos'];
 function init(site, old) {
   const st = { key: robotsKey(site), boot: BOOT, link: old && old.link !== undefined ? old.link : true,
@@ -127,7 +127,7 @@ const where = (b) => (b.pos ? `${Math.round(b.pos.x)},${Math.round(b.pos.y)}` : 
 const say = (events, id, text) => events.push({ event: 'log', robot: id, text: `${id}: ${text}` });
 // The publish that drives the robot to its goal.
 function send(b, now) {
-  b.sentAt = now; b.seenMoving = false; b.checkUntil = 0; b.waiting = false; b.retryAt = 0;
+  b.recovering = false; b.sentAt = now; b.seenMoving = false; b.checkUntil = 0; b.waiting = false; b.retryAt = 0;
   b.lastPos = b.pos && { x: b.pos.x, y: b.pos.y }; b.progressAt = now;
   const g = b.goal;
   return g.home ? op(b, 'HOME')
@@ -198,7 +198,7 @@ function handle(st, site, input, now) {
     const fresh = init(site, st); for (const k of Object.keys(st)) delete st[k]; Object.assign(st, fresh);
     for (const [rid, r] of Object.entries(st.robots)) if (r.retaught) { delete r.retaught; if (!r.paused && !r.pending && r.why !== 'noroute') { r.waiting = false; start(rid, r, now, events, mqtt); } }
   }
-  if (st.boot !== BOOT) { st.boot = BOOT; st.link = true; st.downSince = 0; for (const r of Object.values(st.robots)) r.online = false; }   // link: the MQTT node reports at start
+  if (st.boot !== BOOT) { st.boot = BOOT; st.link = true; st.downSince = 0; for (const r of Object.values(st.robots)) { r.online = false; r.recovering = true; if (r.goal) { r.seenMoving = false; r.sentAt = now; } } }   // link: the MQTT node reports at start
   const b = st.robots[id];
   switch (input.cmd) {
     case 'goto': {
@@ -241,15 +241,30 @@ function handle(st, site, input, now) {
     case 'link': {   // broker connection lost / back. The alert waits LINK_GRACE_MS (tick): every start reports 'connecting' first.
       const up = !!input.up;
       if (up) { if (st.linkAlert) events.push({ event: 'resolve', key: 'mqtt-down' }); st.linkAlert = false; st.downSince = 0; }
-      else { if (!st.downSince) st.downSince = now; for (const r of Object.values(st.robots)) r.online = false; }
+      else { if (!st.downSince) st.downSince = now; for (const r of Object.values(st.robots)) { r.online = false; r.recovering = true; } }
+      if (up && !st.link) for (const r of Object.values(st.robots)) if (r.goal) { r.seenMoving = false; r.sentAt = now; }
       st.link = up;
       break;
     }
     case 'tick':
-      if (!st.link && !st.linkAlert && st.downSince && now - st.downSince >= LINK_GRACE_MS) {   // one alert per outage
+      if (!site.robots.some(r => r.driver === 'valetudo') && st.linkAlert) { st.linkAlert = false; events.push({ event: 'resolve', key: 'mqtt-down' }); }
+      if (site.robots.some(r => r.driver === 'valetudo') && !st.link && !st.linkAlert && st.downSince && now - st.downSince >= LINK_GRACE_MS) {   // one alert per outage
         st.linkAlert = true; events.push({ event: 'alert', key: 'mqtt-down', level: 'error', text: MQTT_DOWN_TEXT });
       }
       for (const [rid, r] of Object.entries(st.robots)) {
+        // Reconcile a reconnect snapshot before old retry/block timers. Retained data
+        // restores observations, not progress events; allow the map to arrive first.
+        if (r.recovering && r.goal) {
+          if (!st.link || now - r.sentAt < Math.max(r.nomoveMs, POS_WAIT_MS)) continue;
+          if (r.paused || r.why === 'noroute') continue;
+          const pending = r.pending;
+          r.recovering = false; r.pending = false; r.checkUntil = 0; restart(r);
+          if (r.err || r.status === 'error') fault(rid, r, now, events);
+          else if (pending) start(rid, r, now, events, mqtt); // this destination was waiting for STOP, never sent
+          else if (STOPPED.includes(r.status)) end(rid, r, now, events, false);
+          else if (MOVING.includes(r.status)) { r.seenMoving = true; r.progressAt = now; }
+          continue;
+        }
         if (r.pending && now - r.pendingSince >= STOP_WAIT_MS) { r.pending = false; mqtt.push(send(r, now)); }
         if (!r.goal || r.paused || r.pending) continue;
         if (r.waiting) {   // retry: every retrySec, then every retrySec x 4 once reported blocked
@@ -288,28 +303,30 @@ function ingest(st, input, now, events, mqtt, maps) {
     if (key === '$state') { b.online = v === 'ready'; b.stateSeen = true; }
     else if (!b.stateSeen) b.online = true;   // $state is only (re)sent on connect; a robot configured after the subscription never gets it
     if (key === '$state') continue;
+    if (input.retain && b.goal && !b.recovering && key.startsWith('StatusStateAttribute/')) continue;
     if (key === 'StatusStateAttribute/error_description') {
       const was = b.err;
       b.err = v && v !== 'No error' ? v : null;
       b.errRetry = !!b.err && new RegExp(b.retryRe, 'i').test(b.err);
-      if (!b.goal || b.paused) continue;
+      if (!b.goal || b.paused || input.retain) continue;
       if (b.err) { if (b.errRetry) { if (b.blocked && !b.waiting) { b.blocked = false; } wait(id, b, now, events, 'báo lỗi'); } else { if (!b.blocked) say(events, id, `lỗi "${b.err}" trên đường tới ${b.goal.to} — cần nhân viên`); b.waiting = false; block(b); } }
       else if (was && b.blocked && !b.waiting) { restart(b); start(id, b, now, events, mqtt); }   // fault fixed at the robot: carry on
     }
     else if (key === 'BatteryStateAttribute/level') { if (v.trim() !== '' && Number.isFinite(Number(v))) b.battery = Number(v); }   // '' = retained cleared
     else if (key === 'MapData/map-data') {
       const { pos, map } = parseMapData(input.payload);
-      b.pos = pos || b.pos;
-      if (map) { maps[id] = { ...map, t: now }; b.mapMeta = { size: map.size, charger: map.charger }; b.mapAt = now; }
+      if (!input.retain || !b.goal || b.recovering) b.pos = pos || b.pos;
+      if (map) { maps[id] = { ...map, topic: b.topic, t: now }; b.mapMeta = { size: map.size, charger: map.charger }; b.mapAt = now; }
       progress(b, now);
-      if (b.checkUntil && b.goal && !b.blocked && !b.waiting) check(id, b, now, events);
+      if (!input.retain && b.checkUntil && b.goal && !b.blocked && !b.waiting) check(id, b, now, events);
     }
     else if (key.startsWith('WifiConfigurationCapability/')) wifi(b, key.slice(28), v);
     else if (key === 'StatusStateAttribute/status') {
       b.status = v;
+      if (input.retain) continue; // bootstrap facts; the watchdog reconciles after the retained map can arrive
       if (!b.goal || b.paused) continue;
       if (b.pending) { if (STOPPED.includes(v)) { b.pending = false; mqtt.push(send(b, now)); } continue; }
-      if (MOVING.includes(v)) {   // on its way (again): any wait / blocked is over
+      if (MOVING.includes(v)) { b.recovering = false;   // on its way (again): any wait / blocked is over
         if (!b.seenMoving) b.progressAt = now;
         b.seenMoving = true; b.checkUntil = 0;
         if ((b.waiting || b.blocked) && b.why !== 'noroute') { b.waiting = false; b.blocked = false; b.why = null; b.retryAt = 0; }   // tries are kept until it arrives: acceptCm needs them

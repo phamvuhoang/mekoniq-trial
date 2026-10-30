@@ -306,6 +306,9 @@ scenario('chuyển xử lý thủ công', () => {
   r = H({ type: 'siteSave', site: withT13 });
   assert.deepStrictEqual(evText(r), []);
   assert.strictEqual(r.site.rev, 6);
+  assert.deepStrictEqual([r.site.by, r.site.savedAt], ['test', now], 'who saved, when');
+  const badMap = clone(site2); badMap.map.nodes['<b>'] = { x: 1, y: 1 };
+  assert.ok(evText(H({ type: 'siteSave', site: badMap }))[0].includes('lộ trình'), 'route network checked like a map edit');
   assert.ok(r.ui.some(u => !u.session && JSON.parse(u.payload).type === 'site'), 'site broadcast');
   const live = r.site;
   r = H({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T13'], robot: 'R2' }, live);

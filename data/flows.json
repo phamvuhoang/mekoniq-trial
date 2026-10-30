@@ -150,8 +150,8 @@
     "type": "function",
     "z": "tab",
     "name": "Robot Adapter (Valetudo)",
-    "func": "// ADAPTER: Valetudo robot over MQTT — logic in lib/valetudo.js (unit-tested by scripts/test-valetudo.js).\nconst { valetudo: V, seed } = global.get('mekoniq');\nconst site = global.get('site') || seed;\nconst st = flow.get('val') || V.init(site);\nconst input = msg.status ? { cmd: 'link', up: msg.status.fill === 'green' }   // MQTT broker connection\n    : msg.topic === 'tick' ? { cmd: 'tick' }\n    : Buffer.isBuffer(msg.payload) || typeof msg.payload === 'string' ? { cmd: 'mqtt', topic: msg.topic, payload: msg.payload, retain: !!msg.retain }   // MQTT 3.1.1: retain = redelivered on subscribe\n    : msg.payload;\nconst r = V.handle(st, site, input, Date.now());\nflow.set('val', st);\nfor (const [id, m] of Object.entries(r.maps || {})) global.set('vmap:' + id, m, 'memory');   // robot maps: RAM only (Task 9 serves them)\nreturn [r.events.map(e => ({ topic: 'adapter', payload: e })), r.mqtt.map(m => ({ topic: m.topic, payload: m.payload }))];",
-    "outputs": 2,
+    "func": "// ADAPTER: Valetudo robot over MQTT — logic in lib/valetudo.js (unit-tested by scripts/test-valetudo.js).\nconst { valetudo: V, seed } = global.get('mekoniq');\nconst site = global.get('site') || seed;\n// Query mqtt_in itself: its subscriptions may reset on a modified-nodes deploy.\nconst topics = [...new Set(site.robots.filter(r => r.driver === 'valetudo' && r.valetudo && r.valetudo.topic).map(r => r.valetudo.topic + '/#'))];\nif (msg.action === 'getSubscriptions' && Array.isArray(msg.payload)) {\n    const previous = msg.payload.map(s => s.topic);\n    const changes = previous.filter(t => !topics.includes(t)).map(topic => ({ action: 'unsubscribe', topic }))\n        .concat(topics.filter(t => !previous.includes(t)).map(topic => ({ action: 'subscribe', topic: { topic, qos: 0 } })));\n    return [null, null, changes];\n}\nconst st = flow.get('val') || V.init(site);\nconst subscriptions = msg.topic === 'tick' ? [{ action: 'getSubscriptions' }] : [];\nconst keys = Object.fromEntries(site.robots.filter(r => r.driver === 'valetudo' && r.valetudo).map(r => [r.id, r.valetudo.topic]));\nconst oldKeys = context.get('mapKeys', 'memory') || {};\nfor (const id of Object.keys(oldKeys)) if (keys[id] !== oldKeys[id]) global.set('vmap:' + id, undefined, 'memory');\ncontext.set('mapKeys', keys, 'memory');\nconst input = msg.status ? { cmd: 'link', up: msg.status.fill === 'green' }   // MQTT broker connection\n    : msg.topic === 'tick' ? { cmd: 'tick' }\n    : Buffer.isBuffer(msg.payload) || typeof msg.payload === 'string' ? { cmd: 'mqtt', topic: msg.topic, payload: msg.payload, retain: !!msg.retain }   // MQTT 3.1.1: retain = redelivered on subscribe\n    : msg.payload;\nconst r = V.handle(st, site, input, Date.now());\nflow.set('val', st);\nfor (const [id, m] of Object.entries(r.maps || {})) global.set('vmap:' + id, m, 'memory');   // robot maps: RAM only (Task 9 serves them)\nreturn [r.events.map(e => ({ topic: 'adapter', payload: e })), r.mqtt.map(m => ({ topic: m.topic, payload: m.payload })), subscriptions];",
+    "outputs": 3,
     "timeout": 0,
     "noerr": 0,
     "initialize": "",
@@ -165,6 +165,9 @@
       ],
       [
         "mqtt_out"
+      ],
+      [
+        "mqtt_in"
       ]
     ]
   },
@@ -173,14 +176,14 @@
     "type": "mqtt in",
     "z": "tab",
     "name": "Valetudo -> adapter",
-    "topic": "#",
+    "topic": "",
     "qos": "0",
     "datatype": "buffer",
     "broker": "mqtt_broker",
     "nl": false,
     "rap": true,
     "rh": 0,
-    "inputs": 0,
+    "inputs": 1,
     "x": 150,
     "y": 360,
     "wires": [
@@ -245,7 +248,7 @@
     "type": "function",
     "z": "tab",
     "name": "robot map (memory ctx)",
-    "func": "// Latest Valetudo map of one robot, kept in RAM by the Valetudo adapter node (global 'vmap:<id>', memory store).\nconst m = global.get('vmap:' + msg.req.params.robot, 'memory');\nmsg.statusCode = m ? 200 : 404;\nmsg.headers = { 'Cache-Control': 'no-store' };\nmsg.payload = m || { error: 'no map yet' };\nreturn msg;",
+    "func": "// Latest Valetudo map of one robot, kept in RAM by the Valetudo adapter node (global 'vmap:<id>', memory store).\nconst { seed } = global.get('mekoniq');\nconst site = global.get('site') || seed;\nconst robot = site.robots.find(r => r.id === msg.req.params.robot && r.driver === 'valetudo');\nconst cached = global.get('vmap:' + msg.req.params.robot, 'memory');\nconst m = robot && cached && cached.topic === robot.valetudo.topic ? cached : null;\nmsg.statusCode = m ? 200 : 404;\nmsg.headers = { 'Cache-Control': 'no-store' };\nmsg.payload = m || { error: 'no map yet' };\nreturn msg;",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
