@@ -717,7 +717,9 @@ function billHTML(b) {
 }
 // Inputs live in #bForm, rebuilt only when the table / bill state changes, so a state tick never eats what staff type.
 function renderBill() {
-  if (!App.state || $('bill').hidden) return;
+  if (!App.state) return;
+  for (const b of App.state.bills) delete B.v[b.table];   // a bill exists (from any station): the next party never inherits this draft
+  if ($('bill').hidden) return;
   const list = billTables();
   setHTML($('blist'), `<p class="eyebrow sm">Bàn cần tính tiền · ${list.length}</p>` + (list.map(t => {
     const b = billOf(t), os = ordersOf(t), n = billAlerts(t).length;
@@ -730,8 +732,8 @@ function renderBill() {
   if (!t) { setHTML($('bHead'), '<p class="empty">Chọn bàn trong danh sách để chuẩn bị phiếu hoặc xác nhận thu tiền.</p>'); B.key = ''; $('bForm').innerHTML = ''; setHTML($('bActs'), ''); return; }
   const b = billOf(t), os = ordersOf(t), ref = os.reduce((a, o) => a + o.total, 0), ids = JSON.stringify(os.map(o => o.id)), [where, here] = tableState(t);
   const ours = q => q.type.startsWith('bill') && (q.table === t || (!!b && q.bill === b.id)), busy = sending(ours), wait = type => sending(q => ours(q) && q.type === type);
-  const v = B.v[t] ||= { total: '', note: '', ok: false, ids };
-  if (v.ids !== ids) Object.assign(v, { ok: false, ids });   // the orders changed: check them again
+  const v = b ? null : B.v[t] ||= { total: '', note: '', ok: false, ids };   // the prepare draft, only while the table has no bill
+  if (v && v.ids !== ids) Object.assign(v, { ok: false, ids });   // the orders changed: check them again
   const rows = os.map(o => `<tr class="oh"><td>Đơn #${esc(o.id)}${o.t ? ' · ' + clock(o.t) : ''}${o.status === 'paid-claimed' ? ' <span class="pill warn">chưa xác minh</span>' : ''}${b && !b.orderIds.includes(o.id) ? ' <span class="pill danger">ngoài phiếu</span>' : ''}</td><td>${vnd(o.total)}</td></tr>`
     + (o.items || []).map(x => `<tr><td>${esc(itemName(x.id).vi)} ×${x.qty} · ${vnd(x.price)}</td><td>${vnd(x.qty * x.price)}</td></tr>`).join('')).join('');
   const m = b && (b.total ? B.method[b.id] : 'zero');
@@ -772,8 +774,7 @@ $('bill').addEventListener('click', e => {
   if (a === 'bMethod') { B.method[+el.dataset.b] = el.dataset.v; renderBill(); }
   if (a === 'bPrepare') {   // orderIds exactly as rendered; reconnect resends the identical payload (same requestId)
     const t = el.dataset.t, v = B.v[t];
-    request({ type: 'billPrepare', table: t, orderIds: JSON.parse(el.dataset.ids), total: vndIn(v.total), note: v.note.trim(), by: by() }, null,
-      rep => { if (rep.ok) delete B.v[t]; billDone(rep); }, true);
+    request({ type: 'billPrepare', table: t, orderIds: JSON.parse(el.dataset.ids), total: vndIn(v.total), note: v.note.trim(), by: by() }, null, billDone, true);
     renderBill();
   }
   if (['bSettle', 'bClose', 'bVoid'].includes(a)) {
@@ -782,7 +783,7 @@ $('bill').addEventListener('click', e => {
     const msg = { type: { bSettle: 'billSettle', bClose: 'billClose', bVoid: 'billVoid' }[a], bill: b.id, rev: b.rev, by: by() };
     if (a === 'bSettle') msg.method = b.total ? B.method[b.id] : 'zero';
     if (a === 'bVoid') msg.reason = B.reason[b.id].trim();
-    armed(a + '-' + b.id, () => request(msg, null, billDone, true), renderBill);
+    armed(a + '-' + b.id, () => request(msg, null, rep => { if (rep.ok && a === 'bClose' && B.table === b.table) B.table = null; billDone(rep); }, true), renderBill);
   }
 });
 $('bill').addEventListener('input', e => {

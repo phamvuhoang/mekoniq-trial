@@ -65,8 +65,9 @@ function handle(st, site, cmd, now) {
     Object.assign(bill, { status: 'void', voidAt: now, voidBy: by, voidReason: reason });
   } else {   // billClose
     const late = st.orders.some(o => o.table === bill.table && isOpen(o) && !bill.orderIds.includes(o.id));
+    // A robot parked on standby at the table (the guest's pay screen) carries nothing for it: only real stops block.
     const heading = st.missions.some(m => (m.status === 'queued' || m.status === 'active') &&
-      (m.stops || []).some(s => s.p === bill.table && (s.status === 'pending' || s.status === 'active')));
+      (m.stops || []).some(s => s.p === bill.table && s.a !== 'standby' && (s.status === 'pending' || s.status === 'active')));
     if (late || heading) return fail('busy');
     for (const o of st.orders) if (bill.orderIds.includes(o.id)) Object.assign(o, { status: 'closed', closedAt: now, closedBy: by, bill: bill.id });
     Object.assign(bill, { status: 'closed', closedAt: now, closedBy: by });

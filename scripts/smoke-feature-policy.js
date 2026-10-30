@@ -485,10 +485,7 @@ async function scenario(name, fn, edit = () => {}) {
       assert.deepEqual(await st.evaluate(() => replies.map((r) => [r.ok, r.duplicate || r.code])), [[true, true], [false, "stale"]]);
       assert.equal(await st.evaluate(() => App.state.log.filter((l) => / đã xác nhận thu /.test(l.text)).length), 1);
 
-      // Close waits until nothing is still heading to the table: the robot leaves, then a delivery is refused, then cancelled.
-      await robot.locator('[data-act="payBack"]').click();
-      await robot.locator('[data-act="release"]').click();
-      await st.waitForFunction(() => !App.state.missions.some((m) => m.robot === "R1" && m.kind === "summon"));
+      // Close waits for a delivery still heading to the table; R1 parked there on standby (the pay screen) does not block it.
       await st.evaluate(() => send({ type: "create", kind: "deliver", from: "kitchen", tables: ["T05"], robot: "R2", by: "Smoke" }));
       await st.waitForFunction(() => App.state.missions.some((m) => m.kind === "deliver"));
       await spyToasts(st);
@@ -502,6 +499,7 @@ async function scenario(name, fn, edit = () => {}) {
       await st.evaluate(() => { window.sent = []; const s = send; send = (o) => { sent.push(structuredClone(o)); s(o); }; });
       await twice(st, '[data-act="bClose"]');
       await st.waitForFunction(() => !App.state.bills.length && !App.state.orders.some((o) => o.table === "T05"));
+      assert.deepEqual(await robotOf(st, "R1").then((r) => [r.phase, r.at]), ["atStop", "T05"]);
       const closeMsg = await st.evaluate(() => sent.find((o) => o.type === "billClose"));
       await st.reload();
       await st.waitForFunction(() => App.site && App.state);
@@ -623,6 +621,14 @@ async function scenario(name, fn, edit = () => {}) {
       await robot.waitForFunction(() => toasts.length);
       assert.deepEqual(await robot.evaluate(() => toasts), ["Phiếu đã thay đổi, tải lại · This item has changed — please reload"]);
       await expectText(robot, "#body", "Đã được nhân viên xác nhận");
+
+      // The bill closes (R1 still on standby there): the next party's form at T05 starts empty on both stations, the race loser's draft included.
+      await twice(a, '[data-act="bClose"]');
+      await a.waitForFunction(() => !App.state.bills.some((x) => x.table === "T05") && !B.table);
+      for (const p of [a, b]) {
+        await p.selectOption("#bOther", "T05");
+        assert.deepEqual(await p.evaluate(() => [$("bTotal").value, $("bNote").value, $("bOk").checked]), ["", "", false]);
+      }
     }, billing);
   } finally {
     await browser.close();

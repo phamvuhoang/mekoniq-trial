@@ -221,6 +221,23 @@ test('close is refused while the table has new orders or a delivery still headin
   assert.deepEqual([ok.orders[0].closedAt, ok.orders[0].closedBy, ok.orders[0].bill], [7000, 'Thu ngân', ob.id]);
 });
 
+test('a robot parked on standby at the table (the pay screen) does not block close; handoff/collect/guide stops still do', () => {
+  const settled = () => {
+    const st = fixture(), b = prep(st).bill;
+    H(st, {type: 'billSettle', bill: b.id, rev: 1, method: 'transfer', requestId: 's'});
+    return [st, b];
+  };
+  for (const a of ['handoff', 'collect', 'guide']) {
+    const [st, b] = settled();
+    st.missions.push({id: 1, kind: 'x', status: 'active', stops: [{p: 'T01', a, status: 'active'}]});
+    rejects(st, {type: 'billClose', bill: b.id, rev: 2, requestId: 'x'}, 'busy');
+  }
+  const [st, b] = settled();
+  st.missions.push({id: 1, kind: 'summon', status: 'active', stops: [{p: 'T01', a: 'standby', status: 'active'}]});
+  const c = H(st, {type: 'billClose', bill: b.id, rev: 2, requestId: 'x'});
+  assert.deepEqual([c.ok, c.bill.status, st.orders[0].status], [true, 'closed', 'closed']);
+});
+
 test('close marks exactly the snapshot orderIds, never by table', () => {
   const st = {orders: [{id: 1, table: 'T01', status: 'new', total: 10, items: [], t: 1}], missions: []};
   Billing.init(st);
