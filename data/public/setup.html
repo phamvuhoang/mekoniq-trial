@@ -6,7 +6,11 @@
 <style>
   /* Manager's config page (spec 4.5): every operational setting, saved live to the orchestrator (no site.json editing).
      Tabs in the app bar; each tab fits one screen, long lists scroll inside their card. */
-  .appbar .title { flex: none; }
+  /* Lưu must stay on screen (.screen clips): the title, which carries the restaurant name, is cut short (…) first;
+     if that is still too wide the buttons wrap to a second row. Wide screens look as before (title up to its own width). */
+  .appbar { height: auto; min-height: 64px; flex-wrap: wrap; row-gap: 8px; padding-block: 8px; }
+  .appbar .title { flex: 1 1 0; min-width: 120px; max-width: max-content; }
+  .appbar .title b, .appbar .title small { overflow: hidden; text-overflow: ellipsis; }
   .appbar .seg.dark button { padding: 8px 14px; }
   .appbar .btn { min-height: 40px; padding: 8px 14px; border-color: #3c5f5c; color: var(--card); }
   .appbar .btn.primary { border-color: var(--mint); color: var(--deep); }

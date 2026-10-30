@@ -15,6 +15,24 @@ async function open(context, path) {
   await page.waitForFunction(() => typeof D !== "undefined" && D);
   return page;
 }
+// Runs in the page. Every control can be touched: app bar controls as laid out (.screen clips and cannot be scrolled),
+// tab controls after scrolling only real scroll areas (tab, cards), never the clipped frame. Returns what fails.
+function unreachable() {
+  const screen = document.querySelector(".screen"), out = [];
+  const hit = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight &&
+      el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  };
+  const name = (el) => el.id || el.dataset.feat || el.dataset.tab || el.dataset.m || el.textContent.trim().slice(0, 24);
+  for (const el of document.querySelectorAll(".appbar a, .appbar button")) if (!hit(el)) out.push("app bar: " + name(el));
+  for (const el of document.querySelectorAll(`#tab-${tab} :is(input, select, button, a)`)) {
+    if (el.closest("[hidden]")) continue;
+    el.scrollIntoView({ block: "nearest", inline: "nearest" });
+    if (!hit(el) || screen.scrollTop || screen.scrollLeft || scrollX || scrollY) out.push(name(el));
+  }
+  return out;
+}
 async function save(page) {
   await page.locator("#save").click();
   await page.waitForFunction(() => !saving && !dirty);
@@ -71,9 +89,7 @@ async function scenario(name, fn) {
           await page.goto(base + "/setup.html?tab=" + t);
           await page.waitForFunction(() => typeof D !== "undefined" && D);
           await page.waitForTimeout(300);
-          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth || document.documentElement.scrollHeight > innerHeight), false, `${t} overflows at ${width}×${height}`);
-          if (t === "features" && height > width)   // stacked cards must not overlap
-            assert(await page.evaluate(() => $("policy").closest(".card").getBoundingClientRect().bottom <= $("menuCard").getBoundingClientRect().top), "cards overlap in portrait");
+          assert.deepEqual(await page.evaluate(unreachable), [], `${t} at ${width}×${height}: controls off-screen or covered`);
           if (process.env.SMOKE_SHOTS) await page.screenshot({ path: `${process.env.SMOKE_SHOTS}/setup-${t}-${width}x${height}.png` });
         }
     });
