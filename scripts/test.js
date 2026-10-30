@@ -421,8 +421,10 @@ scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi g
   assert.strictEqual(calls().length, 1, 'new alert after ack');
   send({ type: 'call', point: 'T05', what: 'bill' });
   assert.ok(st.alerts.some(a => a.key === 'call-bill-T05' && a.text === 'Bàn 05 xin hoá đơn'));
-  send({ type: 'call', point: 'T05', what: 'paid', amount: '120.000đ' });
-  assert.ok(st.alerts.some(a => a.key === 'call-paid-T05' && a.text === 'Bàn 05 báo đã chuyển khoản · 120.000đ'));
+  events = [];
+  send({ type: 'call', point: 'T05', what: 'paid', amount: '120.000đ' });   // pre-bill pay screen
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T05'), 'paid is no longer a call');
+  assert.ok(events.some(e => e.reply && e.ok === false && e.code === 'reload'));
   const n = st.alerts.length;
   send({ type: 'call', point: 'kitchen', what: 'staff' });   // not a table
   send({ type: 'call', point: 'T05', what: 'beer' });
@@ -587,7 +589,7 @@ scenario('gọi món 2 danh mục -> mỗi trạm một cảnh báo, chỉ món 
   assert.strictEqual(st.orders.length, 1, 'invalid orders ignored');
   now += 24 * 3600 * 1000 + 1000;
   run(1);
-  assert.strictEqual(st.orders.length, 0, 'dropped after 24 h');
+  assert.strictEqual(st.orders.length, 1, 'open order kept past 24 h (only a closed bill closes it)');
 });
 
 {
@@ -599,15 +601,17 @@ scenario('gọi món 2 danh mục -> mỗi trạm một cảnh báo, chỉ món 
 }
 
 // ---- Phase 2 Task 8: pay on the robot ----
-scenario('khách báo đã chuyển khoản -> đơn của bàn chuyển paid-claimed, cảnh báo kèm số tiền', () => {
+scenario('màn thanh toán cũ báo đã chuyển khoản -> yêu cầu tải lại, đơn giữ nguyên, không cảnh báo', () => {
   send({ type: 'order', table: 'T07', items: [{ id: 'pho', qty: 1 }, { id: 'cafe', qty: 2 }] });
   send({ type: 'order', table: 'T08', items: [{ id: 'bia', qty: 1 }] });
+  events = [];
   send({ type: 'call', point: 'T07', what: 'paid', amount: 65000 + 2 * 29000 });
-  assert.deepStrictEqual(st.orders.map(o => [o.table, o.status]), [['T07', 'paid-claimed'], ['T08', 'new']]);
-  assert.ok(st.alerts.some(a => a.key === 'call-paid-T07' && a.text === 'Bàn 07 báo đã chuyển khoản · 123.000đ'));
-  send({ type: 'call', point: 'T03', what: 'paid' });   // nothing ordered on the robot: still tell staff
-  assert.ok(st.alerts.some(a => a.key === 'call-paid-T03' && a.text === 'Bàn 03 báo đã chuyển khoản'));
-  assert.deepStrictEqual(st.orders.map(o => o.status), ['paid-claimed', 'new']);
+  assert.deepStrictEqual(st.orders.map(o => [o.table, o.status]), [['T07', 'new'], ['T08', 'new']]);
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T07'));
+  assert.deepStrictEqual(events.filter(e => e.reply).map(e => [e.ok, e.code]), [[false, 'reload']]);
+  send({ type: 'call', point: 'T03', what: 'paid' });   // nothing ordered on the robot: same answer
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T03'));
+  assert.deepStrictEqual(st.orders.map(o => o.status), ['new', 'new']);
 });
 
 // ---- Final review fixes ----
@@ -631,9 +635,9 @@ scenario('review: Đã biết hoá đơn / chuyển khoản -> chỉ nhận yêu
   send({ type: 'ack', alert: st.alerts.find(a => a.key === 'call-bill-T05').id });
   assert.deepStrictEqual(st.orders.map(o => o.table), ['T05', 'T06'], 'ack never closes orders');
   assert.ok(!st.alerts.some(a => a.key === 'call-bill-T05'));
-  send({ type: 'call', point: 'T06', what: 'paid', amount: 65000 });
-  send({ type: 'ack', alert: st.alerts.find(a => a.key === 'call-paid-T06').id });
-  assert.deepStrictEqual(st.orders.map(o => o.table), ['T05', 'T06']);
+  send({ type: 'call', point: 'T06', what: 'paid', amount: 65000 });   // refused (reload): no alert to ack, orders untouched
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T06'));
+  assert.deepStrictEqual(st.orders.map(o => [o.table, o.status]), [['T05', 'new'], ['T06', 'new']]);
 });
 
 scenario('ack bill/paid never settles or deletes orders', () => {

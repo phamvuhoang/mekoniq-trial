@@ -73,7 +73,7 @@ function handle(st, site, cmd, now) {
   }
   bill.rev++;
   // ponytail: no 20-receipt trim — a bill takes at most 4 transitions, so spec §7.2's cap can't be reached.
-  bill.receipts.push(receipt);
+  (bill.receipts ||= []).push(receipt);
   return { ok: true, bill, duplicate: false };
 }
 

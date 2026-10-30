@@ -19,8 +19,12 @@ const SIM_FAULTS = ['block', 'clear', 'offline', 'online', 'lowbat'];
 const R = require('./route');
 const Site = require('./site');
 const Policy = require('./feature-policy');
+const Billing = require('./billing');
 const WHY_VI = { object: 'vật cản', person: 'người đi qua', robot: 'robot khác' };
-const CALL_VI = { staff: 'gọi nhân viên', bill: 'xin hoá đơn', paid: 'báo đã chuyển khoản' };
+const CALL_VI = { staff: 'gọi nhân viên', bill: 'xin hoá đơn' };
+const OPEN_BILL = ['prepared', 'claimed', 'settled'];
+const BILL_VI = { billPrepare: 'đã chuẩn bị', billClaim: 'khách báo đã trả', billSettle: 'đã xác nhận thu', billClose: 'đã đóng', billVoid: 'đã vô hiệu hóa' };
+const BILL_FIELDS = ['type', 'table', 'orderIds', 'total', 'note', 'bill', 'rev', 'method', 'reason', 'requestId'];   // whitelist, + server-side by
 
 let lastSnap = '';
 
@@ -35,6 +39,7 @@ function init(site, now) {
 // Also drops robots removed from site.json (setup.html) once they have no mission.
 function sync(st, site, now) {
   if (!st.orders) { st.orders = []; st.orderSeq = 0; }   // state saved before orders existed
+  Billing.init(st);
   if (!st.map) { st.map = { v: 1, nodes: {}, edges: [], ...JSON.parse(JSON.stringify(site.map || {})) }; st.obstacles = []; }
   for (const { id, dock } of site.robots) {
     if (st.robots[id]) { st.robots[id].dock = dock; continue; }
@@ -79,6 +84,8 @@ const feature = (c, f, by) => Policy.migrate(c.site).features[f === 'call' ? 'ca
 const resolve = (c, key) => { c.st.alerts = c.st.alerts.filter(a => a.key !== key); };
 // Client-side cues. robotSound -> robot screen, stationSound -> stations (filtered by point), table -> customer page.
 const ev = (c, e) => c.ui.push({ payload: JSON.stringify({ type: 'event', t: c.now, ...e }) });
+// Answer to one session's request {ok, code?, text, bill?, duplicate?}: the client leaves its "sending" state on it.
+const reply = (c, session, requestId, r) => c.ui.push({ session, payload: JSON.stringify({ type: 'event', t: c.now, reply: true, requestId, ...r }) });
 
 function goTo(c, r, point, phase) {
   r.target = point; r.at = null; r.phase = phase; r.token++; r.waitAlerted = false;
@@ -290,15 +297,15 @@ function dispatch(c, r, d, by) {
   advance(c, m);
 }
 
-// Guest at a table asks for staff / the bill / says they paid. One alert per table+what until a station acks it.
-function call(c, d, by) {
+// Guest at a table asks for staff / the bill. One alert per table+what until a station acks it.
+function call(c, d, by, session) {
+  // Pre-bill pay screens: a guest's "I paid" no longer touches orders, only billClaim on a staff-prepared bill does.
+  if (d.what === 'paid') return reply(c, session, d.requestId, { ok: false, code: 'reload', text: 'Màn thanh toán đã cũ — vui lòng tải lại trang' });
   const P = c.site.points;
   if (!P[d.point] || P[d.point].kind !== 'table' || !CALL_VI[d.what] || !feature(c, 'call', by)) return;
-  if (d.what === 'paid') for (const o of c.st.orders) if (o.table === d.point && o.status === 'new') o.status = 'paid-claimed';   // staff checks the bank app
   const key = `call-${d.what}-${d.point}`;
   if (c.st.alerts.some(a => a.key === key)) return;
-  const amount = d.what !== 'paid' || !d.amount ? '' : ' · ' + (Number.isFinite(d.amount) ? vnd(Math.round(d.amount)) : String(d.amount).slice(0, 20));
-  const text = `${pname(c, d.point)} ${CALL_VI[d.what]}${amount}`;
+  const text = `${pname(c, d.point)} ${CALL_VI[d.what]}`;
   alert(c, key, 'warn', text);
   ev(c, { stationSound: 'ding', text });
   log(c, 'info', `${by}: ${text}`);
@@ -308,9 +315,12 @@ const SLOW = 0.5;   // guide "Đi chậm hơn" speed factor
 const vnd = n => String(n).replace(/\B(?=(\d{3})+$)/g, '.') + 'đ';
 // Guest orders on the robot screen. One alert per preparing station listing only its items; the station then
 // sends the delivery as usual (food must be cooked first, so no mission is created here).
-function order(c, d, by) {
+function order(c, d, by, session) {
   const P = c.site.points, menu = c.site.menu || {}, items = menu.items || [], cats = menu.cats || [];
-  if (!P[d.table] || P[d.table].kind !== 'table' || !Array.isArray(d.items) || !d.items.length || d.items.length > 30) return;
+  if (!P[d.table] || P[d.table].kind !== 'table') return;
+  if (c.st.bills.some(b => b.table === d.table && OPEN_BILL.includes(b.status)))   // spec §7.2: never change a total already shown
+    return reply(c, session, d.requestId, { ok: false, code: 'billing', text: `${pname(c, d.table)}: Bàn đang tính tiền — nhờ nhân viên vô hiệu hóa phiếu trước khi gọi thêm` });
+  if (!Array.isArray(d.items) || !d.items.length || d.items.length > 30) return;
   const lines = d.items.map(x => ({ x, it: x && items.find(i => i.id === x.id) }));
   if (lines.some(({ x, it }) => !it || !Number.isInteger(x.qty) || x.qty < 1 || x.qty > 20) || !feature(c, 'order', by)) return;
   const o = { id: ++c.st.orderSeq, table: d.table, items: lines.map(({ x, it }) => ({ id: it.id, qty: x.qty, price: it.price })), t: c.now, status: 'new', by };
@@ -327,6 +337,25 @@ function order(c, d, by) {
     ev(c, { stationSound: 'ding', point: station, text });
   }
   log(c, 'info', `${by}: ${pname(c, d.table)} gọi ${o.items.length} món · ${vnd(o.total)} (đơn #${o.id})`);
+}
+
+// Staff-verified bills (lib/billing.js decides). Amounts in texts come from the bill, never from the client.
+function bill(c, d, by, session) {
+  const cmd = { by };
+  for (const k of BILL_FIELDS) cmd[k] = d[k];
+  const r = Billing.handle(c.st, c.site, cmd, c.now);
+  if (!r.ok) return reply(c, session, d.requestId, { ok: false, code: r.code, text: r.text });
+  const { receipts, ...b } = r.bill;   // copy: receipts stay server-side
+  const text = `${pname(c, b.table)} · phiếu #${b.id} ${BILL_VI[d.type]} · ${vnd(b.total)}`;
+  reply(c, session, d.requestId, { ok: true, duplicate: r.duplicate || undefined, text, bill: b });
+  if (r.duplicate) return;   // retry of a done request: already logged / alerted
+  log(c, d.type === 'billVoid' ? 'warn' : 'info', `${by}: ${text}${b.voidReason ? ' — ' + b.voidReason : ''}`);
+  if (d.type === 'billClaim') {
+    const t = `${pname(c, b.table)} báo đã trả phiếu #${b.id} · ${vnd(b.total)} — kiểm tra giao dịch rồi xác nhận`;
+    alert(c, 'bill-claim-' + b.id, 'warn', t);
+    ev(c, { stationSound: 'ding', point: c.site.service.requestStation, text: t });
+  } else if (d.type !== 'billPrepare') resolve(c, 'bill-claim-' + b.id);
+  c.force = true;
 }
 
 function telemetry(c, d) {
@@ -388,7 +417,7 @@ function reroute(c, r, why) {
 // Waiting-time rules while a robot stands at a stop.
 function timers(c) {
   const T = c.site.timing;
-  c.st.orders = c.st.orders.filter(o => c.now - o.t < 24 * 3600 * 1000);   // settled ones leave on ack (fromUI 'ack')
+  Billing.cleanup(c.st, c.now);   // open orders/bills stay however old; closed ones go after 30 days
   for (const r of Object.values(c.st.robots)) {
     if (r.phase !== 'atStop' || r.halt || r.offline) continue;
     const m = findM(c, r.mission), s = m.stops[m.cur];
@@ -431,12 +460,20 @@ function saveSite(c, d, session, seed, by) {
   if (!seed) return fail('thiếu dữ liệu mặc định');
   const reset = d.type === 'siteReset';
   if (!reset && (!d.site || Number(d.site.rev) !== (c.site.rev || 0))) return fail('máy khác vừa lưu cấu hình — tải lại trang');
+  // A setup page cached before v2 would re-derive the split flags from the old shape: only allowed while the live site is pre-v2 too.
+  if (!reset && !c.legacy && d.site.featurePolicyVersion !== 2) return fail('trang cấu hình đã cũ — tải lại trang rồi sửa lại');
   const { site, errors } = Site.normalize(reset ? seed : d.site, seed);
   if (errors.length) return fail(errors.join('; '));
   if (site.map) { site.map = site.floor && R.clean(site.map, site); if (!site.map) return fail('lộ trình không hợp lệ'); }   // same check as an edit from map.html
   const used = Site.inUse(c.site, c.st);
+  const billed = [...used.tables].filter(p => (site.points[p] || {}).kind !== 'table').map(p => pname(c, p));
+  if (billed.length) return fail(billed.join(', ') + ' đang có đơn hoặc phiếu tính tiền chưa đóng — không xoá hay đổi loại điểm được');
   const gone = [...used.points].filter(p => !site.points[p]).map(p => pname(c, p)).concat([...used.robots].filter(id => !site.robots.some(r => r.id === id)));
   if (gone.length) return fail(gone.join(', ') + ' đang có lệnh');
+  // The guest sees the QR of a prepared/claimed bill: the receiving account must not change under it (spec §7.3).
+  const payee = s => JSON.stringify(['bank', 'account', 'name', 'qr'].map(k => (s.payment || {})[k] || ''));
+  const waiting = c.st.bills.filter(b => b.status === 'prepared' || b.status === 'claimed').map(b => pname(c, b.table));
+  if (waiting.length && payee(site) !== payee(c.site)) return fail(`${waiting.join(', ')} đang chờ thanh toán — hoàn tất hoặc vô hiệu hóa phiếu trước khi đổi tài khoản nhận tiền`);
   site.rev = (c.site.rev || 0) + 1; site.by = by; site.savedAt = c.now; site.saveRequestId = String(d.requestId || '').slice(0, 100);   // setup.html Sao lưu: "Lưu lần cuối bởi … lúc …"
   c.site = c.newSite = site;
   sync(c.st, site, c.now);
@@ -452,7 +489,7 @@ function fromUI(c, d, session, seed) {
   const m = typeof d.mission === 'number' ? findM(c, d.mission) : null;
   switch (d.type) {
     case 'hello':
-      c.ui.push({ session, payload: JSON.stringify({ type: 'site', site: c.site }) });
+      c.ui.push({ session, payload: JSON.stringify({ type: 'site', site: c.site, migrated: c.legacy || undefined }) });   // setup: "check the request station"
       c.ui.push({ session, payload: JSON.stringify({ type: 'map', map: st.map }) });
       c.force = true;
       return;
@@ -463,8 +500,9 @@ function fromUI(c, d, session, seed) {
     case 'cancelStop': if (m) cancelStop(c, m, d.stop, by, d.why === 'customer' ? 'customer' : 'staff', d); return;
     case 'confirm': if (r) confirm(c, r, d, by); return;
     case 'dispatch': if (r) dispatch(c, r, d, by); return;
-    case 'call': return call(c, d, by);
-    case 'order': return order(c, d, by);
+    case 'call': return call(c, d, by, session);
+    case 'order': return order(c, d, by, session);
+    case 'billPrepare': case 'billClaim': case 'billSettle': case 'billClose': case 'billVoid': return bill(c, d, by, session);
     case 'speed':   // guide: "Đi chậm hơn" for guests who walk slowly; ends with the mission
       if (!r || !r.mission || r.offline || !!d.slow === !!r.slow) return;
       r.slow = !!d.slow;
@@ -549,13 +587,17 @@ function snapshot(st) {
     robots: Object.values(st.robots).map(({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos, slow }) =>
       ({ id, x, y, battery, phase, at, target, mission, halt, offline, charging, waitSince, nav, why, path, rem, pos: pos || null, slow: slow ? SLOW : 0 })),   // slow = speed factor while guiding slowly, 0 = normal
     missions: st.missions, history: st.history.slice(0, 15), log: st.log.slice(0, 40), alerts: st.alerts, kpi: st.kpi,
-    obstacles: st.obstacles, mapV: st.map.v, orders: st.orders
+    obstacles: st.obstacles, mapV: st.map.v, orders: st.orders.filter(o => o.status !== 'closed'),
+    bills: st.bills.filter(b => OPEN_BILL.includes(b.status)).map(({ receipts, ...b }) => b)   // history stays in persisted st
   };
 }
 
 // input: {source:'ui', data, session, seed?} | {source:'adapter', data}. Returns {ui, cmds, site?} — site only when the config changed.
-function handle(st, site, input, now) {
-  const c = { st, site, now, ui: [], cmds: [], force: false };
+function handle(st, rawSite, input, now) {
+  // Everything below reads the canonical v2 site; the live/persisted one changes only through saveSite.
+  // ponytail: legacy sites are cloned per message until saved once as v2 (sub-ms); cache by object if that ever shows up.
+  const legacy = rawSite.featurePolicyVersion !== 2, site = legacy ? Policy.migrate(rawSite) : rawSite;
+  const c = { st, site, legacy, now, ui: [], cmds: [], force: false };
   sync(st, site, now);
   const d = input.data;
   if (d && typeof d === 'object') {
