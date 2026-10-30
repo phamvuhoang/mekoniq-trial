@@ -63,10 +63,11 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   const st = { missions: [{ status: 'active', robot: 'R1', stops: [{ p: 'T01', status: 'active' }, { p: 'T02', status: 'done' }] },
                           { status: 'queued', robot: null, stops: [{ p: 'T03', status: 'pending' }] }],
     robots: { R1: { mission: 1 }, R2: { mission: null } },
-    orders: [{ table: 'T04', status: 'new' }, { table: 'T05', status: 'closed' }, { table: 'T06', status: 'paid-claimed' }],
-    bills: [{ table: 'T07', status: 'claimed' }, { table: 'T08', status: 'closed' }, { table: 'T09', status: 'void' }] };
-  const u = S.inUse(seed, st);
+    orders: [{ table: 'T04', status: 'new' }, { table: 'T05', status: 'closed' }, { table: 'T06', status: 'paid-claimed' }, { table: 'T99', status: 'new' }],
+    bills: [{ table: 'T07', status: 'claimed' }, { table: 'T08', status: 'closed' }, { table: 'T09', status: 'void' }, { table: 'T98', status: 'prepared' }] };
+  const u = S.inUse(require('../data/site.demo.json'), st);   // T01..T12 exist; T98/T99 are orphans of deleted tables
   assert.deepStrictEqual([...u.points].sort(), ['T01', 'T03', 'T04', 'T06', 'T07']);
+  assert.deepStrictEqual([...u.tables].sort(), ['T04', 'T06', 'T07']);
   assert.deepStrictEqual([...u.robots], ['R1']);
   console.log('✓ inUse');
 }

@@ -132,6 +132,13 @@ test('a table with an open order or bill can be neither deleted nor made another
   assert.equal(save(h, s => { delete s.points.T01; }).site.points.T01, undefined, 'free table can go');
 });
 
+test('an open order for a table already gone from the site never blocks a save', () => {
+  const h = v2();   // e.g. table deleted before inUse counted orders; the 24 h purge no longer clears it
+  h.st.orders = [{id: 1, table: 'T99', status: 'new', items: [], total: 1000, t: 1e12}];
+  assert.equal(save(h, s => { s.name = 'Đổi tên'; }).site.name, 'Đổi tên');
+  assert.equal(h.send({type: 'siteReset', requestId: 'r'}).site.rev, 2);
+});
+
 test('legacy config: hello sends the migrated v2 site without saving it', () => {
   const h = harness();   // demo seed is pre-v2
   const raw = JSON.stringify(h.site);

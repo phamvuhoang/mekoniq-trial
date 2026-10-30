@@ -150,9 +150,10 @@ function menu(site, errors) {
 }
 
 // Point ids and robot ids referenced by open missions, orders or bills — they cannot be deleted while in use.
-// tables = the subset held by open orders/bills (must also stay kind 'table').
+// tables = the subset held by open orders/bills (must also stay kind 'table'). Orders/bills of a table already
+// gone from the site (deleted before orders counted here) are ignored, else they would lock every save forever.
 function inUse(site, st) {
-  const points = new Set(), robots = new Set(), tables = new Set();
+  const points = new Set(), robots = new Set(), tables = new Set(), P = (site && site.points) || {};
   const open = s => s.status === 'pending' || s.status === 'active';
   for (const m of (st && st.missions) || []) {
     if (!['queued', 'active', 'pending'].includes(m.status)) continue;
@@ -160,8 +161,8 @@ function inUse(site, st) {
     if (m.robot) robots.add(m.robot);
   }
   for (const [id, r] of Object.entries((st && st.robots) || {})) if (r.mission) robots.add(id);
-  for (const o of (st && st.orders) || []) if (o.status !== 'closed') tables.add(o.table);
-  for (const b of (st && st.bills) || []) if (b.status !== 'closed' && b.status !== 'void') tables.add(b.table);
+  for (const o of (st && st.orders) || []) if (o.status !== 'closed' && P[o.table]) tables.add(o.table);
+  for (const b of (st && st.bills) || []) if (b.status !== 'closed' && b.status !== 'void' && P[b.table]) tables.add(b.table);
   for (const t of tables) points.add(t);
   return { points, robots, tables };
 }
