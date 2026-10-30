@@ -21,7 +21,11 @@ const Site = require('./site');
 const Policy = require('./feature-policy');
 const Billing = require('./billing');
 const WHY_VI = { object: 'vật cản', person: 'người đi qua', robot: 'robot khác' };
-const CALL_VI = { staff: 'gọi nhân viên', bill: 'xin hoá đơn' };
+const CALL_VI = { staff: 'gọi nhân viên', bill: 'yêu cầu tính tiền' };
+const CALL_FLAG = { staff: 'callStaff', bill: 'requestBill' };
+const RETURN_VI = { 'wrong-item': 'báo nhầm món', 'need-help': 'cần hỗ trợ' };
+const FEATURE_VI = { callStaff: 'Gọi nhân viên', requestBill: 'Yêu cầu tính tiền', guide: 'Dẫn khách', order: 'Gọi món', busRobot: 'Thu dọn từ robot' };
+const RECEIPT_MS = 24 * 3600 * 1000, KEEP_RECEIPTS = 1000;   // call/returnRequest receipts (bill receipts live in the bill)
 const OPEN_BILL = ['prepared', 'claimed', 'settled'];
 const BILL_VI = { billPrepare: 'đã chuẩn bị', billClaim: 'khách báo đã trả', billSettle: 'đã xác nhận thu', billClose: 'đã đóng', billVoid: 'đã vô hiệu hóa' };
 const BILL_FIELDS = ['type', 'table', 'orderIds', 'total', 'note', 'bill', 'rev', 'method', 'reason', 'requestId'];   // whitelist, + server-side by
@@ -40,6 +44,7 @@ function init(site, now) {
 function sync(st, site, now) {
   if (!st.orders) { st.orders = []; st.orderSeq = 0; }   // state saved before orders existed
   Billing.init(st);
+  if (!Array.isArray(st.requests)) st.requests = [];
   if (!st.map) { st.map = { v: 1, nodes: {}, edges: [], ...JSON.parse(JSON.stringify(site.map || {})) }; st.obstacles = []; }
   for (const { id, dock } of site.robots) {
     if (st.robots[id]) { st.robots[id].dock = dock; continue; }
@@ -67,9 +72,9 @@ function log(c, level, text, robot) {
   c.st.log.unshift({ t: c.now, level, text, robot });
   c.st.log.length = Math.min(c.st.log.length, KEEP_LOG);
 }
-function alert(c, key, level, text, robot) {
+function alert(c, key, level, text, robot, extra) {
   if (c.st.alerts.some(a => a.key === key)) return;
-  c.st.alerts.unshift({ id: ++c.st.alertSeq, key, t: c.now, level, text, robot });
+  c.st.alerts.unshift({ id: ++c.st.alertSeq, key, t: c.now, level, text, robot, ...extra });
   // Full list: drop the oldest warning (possibly the one just added), so guest calls / orders never push out an
   // e-stop, offline or blocked alert. Only when all 20 are errors does the oldest error go.
   while (c.st.alerts.length > 20) {
@@ -78,14 +83,33 @@ function alert(c, key, level, text, robot) {
     c.st.alerts.splice(i >= 0 ? i : c.st.alerts.length - 1, 1);
   }
 }
-// Phase-2 features are opt-in per site (site.features); the UI hides them too, this is the server-side gate.
-// Reads the v2 flags of legacy and v2 sites; 'call' = callStaff until each call.what gets its own gate.
-const feature = (c, f, by) => Policy.migrate(c.site).features[f === 'call' ? 'callStaff' : f] === true ? true : (log(c, 'warn', `${by}: tính năng "${f}" đang tắt — bỏ qua`), false);
 const resolve = (c, key) => { c.st.alerts = c.st.alerts.filter(a => a.key !== key); };
 // Client-side cues. robotSound -> robot screen, stationSound -> stations (filtered by point), table -> customer page.
 const ev = (c, e) => c.ui.push({ payload: JSON.stringify({ type: 'event', t: c.now, ...e }) });
 // Answer to one session's request {ok, code?, text, bill?, duplicate?}: the client leaves its "sending" state on it.
 const reply = (c, session, requestId, r) => c.ui.push({ session, payload: JSON.stringify({ type: 'event', t: c.now, reply: true, requestId, ...r }) });
+// Server-side gate for new business (spec §5, §9): flag on and config ready, else a refusal and nothing changes.
+// Work already accepted (confirm, pause, cancel, release, unload, speed of a running guide) is never gated.
+function allowed(c, key, session, requestId) {
+  const p = Policy.readiness(c.site, key);
+  if (!p.effective) reply(c, session, requestId, p.enabled ? { ok: false, code: 'not-ready', text: p.reasons.map(x => x.text).join('; ') }
+    : { ok: false, code: 'disabled', text: `Tính năng "${FEATURE_VI[key]}" đang tắt` });
+  return p.effective;
+}
+const reqStation = c => (c.site.service || {}).requestStation || null;   // a v2 site that skipped normalize may lack service
+// Call / returnRequest receipts (spec §6), persisted in st for 24 h: a retry with the same requestId is answered, never
+// re-alerted, even after ack. No requestId (old cached client): processed without a receipt.
+const rid = d => (typeof d.requestId === 'string' ? d.requestId.trim().slice(0, 100) : '');
+function seen(c, d, fp, session) {
+  const q = rid(d) && c.st.requests.find(x => x.id === rid(d));
+  if (q) reply(c, session, d.requestId, q.fp === fp ? { ok: true, duplicate: true, text: 'Yêu cầu đã được gửi' } : { ok: false, code: 'request-conflict', text: 'Mã yêu cầu đã dùng cho yêu cầu khác' });
+  return !!q;
+}
+function accept(c, d, session, fp, text) {
+  if (rid(d)) c.st.requests.push({ id: rid(d), fp, t: c.now });
+  if (c.st.requests.length > KEEP_RECEIPTS) c.st.requests.shift();   // ponytail: flood guard drops the oldest; raise if a site ever nears it
+  reply(c, session, d.requestId, { ok: true, text });
+}
 
 function goTo(c, r, point, phase) {
   r.target = point; r.at = null; r.phase = phase; r.token++; r.waitAlerted = false;
@@ -154,7 +178,7 @@ function assign(c) {
   }
 }
 
-function create(c, d, by) {
+function create(c, d, by, session) {
   const P = c.site.points;
   const isTable = id => P[id] && P[id].kind === 'table';
   const pref = d.robot === 'any' || c.st.robots[d.robot] ? d.robot : null;
@@ -167,7 +191,7 @@ function create(c, d, by) {
   } else if (d.kind === 'bus') {
     if (!isTable(d.table)) return;
     stops = [{ p: d.table, a: 'collect' }, { p: c.site.dishPoint, a: 'unload' }];
-  } else if (d.kind === 'guide') return guide(c, d, by);
+  } else if (d.kind === 'guide') return guide(c, d, by, session);
   else if (d.kind === 'summon') {
     if (!P[d.to] || P[d.to].kind === 'dock') return;
     stops = [{ p: d.to, a: 'standby' }];
@@ -181,12 +205,15 @@ function create(c, d, by) {
 
 // Guests waiting where the robot stands (a station or the entrance) ask it to lead them to a table.
 // Only from the robot's own screen; the robot takes the job at once, handing over its standby job if it has one.
-function guide(c, d, by) {
+function guide(c, d, by, session) {
   const P = c.site.points, r = c.st.robots[d.robot], cur = r && findM(c, r.mission);
   if (!r || !P[d.to] || P[d.to].kind !== 'table' || r.halt || r.offline) return;
   const s = cur && r.phase === 'atStop' && cur.stops[cur.cur];
   // Robots only go idle at the dock, so "waiting at the entrance" always means a standby stop there.
-  if (!s || s.a !== 'standby' || !['station', 'entrance'].includes(P[s.p].kind) || !feature(c, 'guide', by)) return;
+  if (!s || s.a !== 'standby' || !['station', 'entrance'].includes(P[s.p].kind) || !allowed(c, 'guide', session, d.requestId)) return;
+  const cfg = c.site.robots.find(x => x.id === r.id) || {};   // this robot must know the way: route node / taught point
+  if (!(cfg.driver === 'valetudo' ? ((cfg.valetudo || {}).points || {})[d.to] : c.st.map.nodes[d.to]))
+    return reply(c, session, d.requestId, { ok: false, code: 'unreachable', text: `${r.id} chưa đi được tới ${pname(c, d.to)}` });
   s.status = 'done'; s.by = by; finish(c, cur);
   const m = { id: ++c.st.seq, kind: 'guide', by, urgent: false, robotPref: r.id, createdAt: c.now, startedAt: c.now, status: 'active',
     robot: r.id, loaded: false, cur: -1, note: '', stops: [{ p: d.to, a: 'guide', status: 'pending' }] };
@@ -230,6 +257,7 @@ function cancelStop(c, m, i, by, why, d = {}) {
   ev(c, { table: s.p, stationSound: 'cancelled', point: m.stops[0].p, robot: here ? m.robot : undefined, robotSound: here ? 'cancel' : undefined,
     text: `${pname(c, s.p)} huỷ món${tail}` });
   advance(c, m);
+  return true;
 }
 
 function confirm(c, r, d, by) {
@@ -268,11 +296,12 @@ function retarget(c, m, d, by, session) {
 }
 
 // A robot summoned to a spot gets its next job from the robot screen.
-function dispatch(c, r, d, by) {
+function dispatch(c, r, d, by, session) {
   const m = findM(c, r.mission);
   if (!m || m.kind !== 'summon' || r.phase !== 'atStop' || d.mission !== m.id) return;
   const P = c.site.points, s = m.stops[m.cur];
   if (d.release) { s.status = 'done'; log(c, 'info', `${by} cho ${r.id} về`, r.id); return advance(c, m); }
+  if ((d.toDish || d.bus) && !allowed(c, 'busRobot', session, d.requestId)) return;   // new bus trip from the robot screen (F04)
   if (d.toDish) {
     if (s.p === c.site.dishPoint) return;
     Object.assign(s, { a: 'collect', status: 'done' });
@@ -297,18 +326,44 @@ function dispatch(c, r, d, by) {
   advance(c, m);
 }
 
-// Guest at a table asks for staff / the bill. One alert per table+what until a station acks it.
+// Guest at a table asks for staff / the bill (independent flags). One alert per table+what until a station acks it,
+// rung at the request station.
 function call(c, d, by, session) {
   // Pre-bill pay screens: a guest's "I paid" no longer touches orders, only billClaim on a staff-prepared bill does.
   if (d.what === 'paid') return reply(c, session, d.requestId, { ok: false, code: 'reload', text: 'Màn thanh toán đã cũ — vui lòng tải lại trang' });
   const P = c.site.points;
-  if (!P[d.point] || P[d.point].kind !== 'table' || !CALL_VI[d.what] || !feature(c, 'call', by)) return;
-  const key = `call-${d.what}-${d.point}`;
-  if (c.st.alerts.some(a => a.key === key)) return;
-  const text = `${pname(c, d.point)} ${CALL_VI[d.what]}`;
-  alert(c, key, 'warn', text);
-  ev(c, { stationSound: 'ding', text });
-  log(c, 'info', `${by}: ${text}`);
+  if (!P[d.point] || P[d.point].kind !== 'table' || !CALL_VI[d.what]) return;
+  const fp = JSON.stringify(['call', d.point, d.what]);
+  if (seen(c, d, fp, session) || !allowed(c, CALL_FLAG[d.what], session, d.requestId)) return;
+  const key = `call-${d.what}-${d.point}`, text = `${pname(c, d.point)} ${CALL_VI[d.what]}`, station = reqStation(c);
+  if (!c.st.alerts.some(a => a.key === key)) {   // already open: staff were told, just confirm
+    alert(c, key, 'warn', text, undefined, { station });
+    ev(c, { stationSound: 'ding', point: station, text });
+    log(c, 'info', `${by}: ${text}`);
+  }
+  accept(c, d, session, fp, text);
+}
+
+// Guest: "wrong item / need help" on one delivery (spec §6, policy request or direct). Never changes the mission and
+// does not need callStaff: staff open the exact trip from alert.ref and recall it themselves.
+function returnRequest(c, d, by, session) {
+  const no = (code, text) => reply(c, session, d.requestId, { ok: false, code, text });
+  if (!RETURN_VI[d.reason]) return no('invalid', 'Yêu cầu không hợp lệ');
+  const fp = JSON.stringify(['returnRequest', d.mission, d.stop, d.table, d.reason]);
+  if (seen(c, d, fp, session)) return;
+  const m = typeof d.mission === 'number' && findM(c, d.mission), s = m && Number.isInteger(d.stop) && m.stops[d.stop];
+  if (!s || s.a !== 'handoff' || !open(s)) return no('stale', 'Chuyến giao này đã kết thúc — vui lòng gọi nhân viên');
+  if (s.p !== d.table) return no('stale', 'Món này đã được chuyển sang bàn khác — vui lòng tải lại trang');
+  const P = c.site.points, load = m.stops.find(x => x.a === 'load');
+  const station = [load && load.p, reqStation(c), Site.firstStation(c.site)].find(p => P[p] && P[p].kind === 'station');
+  if (!station) return no('no-station', 'Chưa có trạm nhận yêu cầu — vui lòng gọi nhân viên');
+  const key = `return-${m.id}-${d.stop}-${d.table}`, text = `${pname(c, d.table)} ${RETURN_VI[d.reason]} · ${m.label}`;
+  if (!c.st.alerts.some(a => a.key === key)) {
+    alert(c, key, 'warn', text, undefined, { ref: { mission: m.id, stop: d.stop, table: d.table, reason: d.reason }, station });
+    ev(c, { stationSound: 'ding', point: station, text });
+    log(c, 'info', `${by}: ${text}`, m.robot);
+  }
+  accept(c, d, session, fp, text);
 }
 
 const SLOW = 0.5;   // guide "Đi chậm hơn" speed factor
@@ -317,12 +372,12 @@ const vnd = n => String(n).replace(/\B(?=(\d{3})+$)/g, '.') + 'đ';
 // sends the delivery as usual (food must be cooked first, so no mission is created here).
 function order(c, d, by, session) {
   const P = c.site.points, menu = c.site.menu || {}, items = menu.items || [], cats = menu.cats || [];
-  if (!P[d.table] || P[d.table].kind !== 'table') return;
+  if (!P[d.table] || P[d.table].kind !== 'table' || !allowed(c, 'order', session, d.requestId)) return;
   if (c.st.bills.some(b => b.table === d.table && OPEN_BILL.includes(b.status)))   // spec §7.2: never change a total already shown
     return reply(c, session, d.requestId, { ok: false, code: 'billing', text: `${pname(c, d.table)}: Bàn đang tính tiền — nhờ nhân viên vô hiệu hóa phiếu trước khi gọi thêm` });
   if (!Array.isArray(d.items) || !d.items.length || d.items.length > 30) return;
   const lines = d.items.map(x => ({ x, it: x && items.find(i => i.id === x.id) }));
-  if (lines.some(({ x, it }) => !it || !Number.isInteger(x.qty) || x.qty < 1 || x.qty > 20) || !feature(c, 'order', by)) return;
+  if (lines.some(({ x, it }) => !it || !Number.isInteger(x.qty) || x.qty < 1 || x.qty > 20)) return;
   const o = { id: ++c.st.orderSeq, table: d.table, items: lines.map(({ x, it }) => ({ id: it.id, qty: x.qty, price: it.price })), t: c.now, status: 'new', by };
   o.total = o.items.reduce((a, i) => a + i.qty * i.price, 0);
   c.st.orders.push(o);
@@ -337,6 +392,7 @@ function order(c, d, by, session) {
     ev(c, { stationSound: 'ding', point: station, text });
   }
   log(c, 'info', `${by}: ${pname(c, d.table)} gọi ${o.items.length} món · ${vnd(o.total)} (đơn #${o.id})`);
+  reply(c, session, d.requestId, { ok: true, text: `Đã gửi đơn #${o.id}` });   // the robot screen clears its cart only on this
 }
 
 // Staff-verified bills (lib/billing.js decides). Amounts in texts come from the bill, never from the client.
@@ -352,8 +408,8 @@ function bill(c, d, by, session) {
   log(c, d.type === 'billVoid' ? 'warn' : 'info', `${by}: ${text}${b.voidReason ? ' — ' + b.voidReason : ''}`);
   if (d.type === 'billClaim') {
     const t = `${pname(c, b.table)} báo đã trả phiếu #${b.id} · ${vnd(b.total)} — kiểm tra giao dịch rồi xác nhận`;
-    alert(c, 'bill-claim-' + b.id, 'warn', t);
-    ev(c, { stationSound: 'ding', point: c.site.service.requestStation, text: t });
+    alert(c, 'bill-claim-' + b.id, 'warn', t, undefined, { station: reqStation(c) });
+    ev(c, { stationSound: 'ding', point: reqStation(c), text: t });
   } else if (d.type !== 'billPrepare') resolve(c, 'bill-claim-' + b.id);
   c.force = true;
 }
@@ -418,6 +474,7 @@ function reroute(c, r, why) {
 function timers(c) {
   const T = c.site.timing;
   Billing.cleanup(c.st, c.now);   // open orders/bills stay however old; closed ones go after 30 days
+  c.st.requests = c.st.requests.filter(q => c.now - q.t < RECEIPT_MS);
   for (const r of Object.values(c.st.robots)) {
     if (r.phase !== 'atStop' || r.halt || r.offline) continue;
     const m = findM(c, r.mission), s = m.stops[m.cur];
@@ -493,18 +550,31 @@ function fromUI(c, d, session, seed) {
       c.ui.push({ session, payload: JSON.stringify({ type: 'map', map: st.map }) });
       c.force = true;
       return;
-    case 'create': return create(c, d, by);
+    case 'create': return create(c, d, by, session);
     case 'cancel':
       if (m && !(m.loaded && m.kind === 'bus')) cancelMission(c, m, by, 'staff');   // dirty dishes still go to the dish area
       return;
-    case 'cancelStop': if (m) cancelStop(c, m, d.stop, by, d.why === 'customer' ? 'customer' : 'staff', d); return;
+    case 'cancelStop': {
+      if (d.why !== 'customer') { if (m) cancelStop(c, m, d.stop, by, 'staff', d); return; }   // staff recall: unchanged
+      // Guests (QR / robot screen) must name their table: the stop may have moved to another one. Policy request
+      // (also the default of a v2 site missing the field) refuses old clients too; they get returnRequest.
+      const no = (code, text) => reply(c, session, d.requestId, { ok: false, code, text });
+      if (!d.table) return no('invalid', 'Thiếu bàn — vui lòng tải lại trang');
+      if (c.site.customerCancel !== 'direct') return no('policy', 'Nhà hàng nhận yêu cầu trả món qua nhân viên — dùng "Báo nhầm món / Cần hỗ trợ"');
+      if (!m || !cancelStop(c, m, d.stop, by, 'customer', d)) return no('stale', 'Món này đã được giao, huỷ hoặc chuyển bàn');
+      return reply(c, session, d.requestId, { ok: true, text: `${pname(c, d.table)} huỷ món` });
+    }
     case 'confirm': if (r) confirm(c, r, d, by); return;
-    case 'dispatch': if (r) dispatch(c, r, d, by); return;
+    case 'dispatch': if (r) dispatch(c, r, d, by, session); return;
     case 'call': return call(c, d, by, session);
+    case 'returnRequest': return returnRequest(c, d, by, session);
     case 'order': return order(c, d, by, session);
     case 'billPrepare': case 'billClaim': case 'billSettle': case 'billClose': case 'billVoid': return bill(c, d, by, session);
-    case 'speed':   // guide: "Đi chậm hơn" for guests who walk slowly; ends with the mission
-      if (!r || !r.mission || r.offline || !!d.slow === !!r.slow) return;
+    case 'speed':   // guide: "Đi chậm hơn" for guests who walk slowly; ends with the mission. Driver support only (spec §5).
+      if (!r) return;
+      if (!Policy.capabilities(c.site.robots.find(x => x.id === r.id)).speedControl)
+        return reply(c, session, d.requestId, { ok: false, code: 'unsupported', text: `${r.id} không chỉnh được tốc độ` });
+      if (!r.mission || r.offline || !!d.slow === !!r.slow) return;
       r.slow = !!d.slow;
       c.cmds.push({ cmd: 'speed', robot: r.id, factor: r.slow ? SLOW : 1 });
       log(c, 'info', `${by}: ${r.id} ${r.slow ? 'đi chậm' : 'đi bình thường'}`, r.id);

@@ -40,7 +40,7 @@ scenario('giao 2 bàn, khách bàn 07 huỷ khi robot tới -> mang về bếp',
   assert(events.some(e => e.robotSound === 'arrived' && e.table === 'T05'));
   confirm('R1');
   until('T07', atStop('R1', 'handoff', 'T07'));
-  send({ type: 'cancelStop', mission: id, stop: 2, why: 'customer', by: 'Khách Bàn 07' });
+  send({ type: 'cancelStop', mission: id, stop: 2, why: 'customer', table: 'T07', by: 'Khách Bàn 07' });
   until('return', atStop('R1', 'return', 'kitchen'));
   assert.deepStrictEqual(stopOf('R1').trays, [{ tray: 2, table: 'T07' }]);
   confirm('R1');
@@ -90,7 +90,7 @@ scenario('trạm huỷ giữa đường khi đã xếp đồ -> mang về quầy
 scenario('khách huỷ trước khi bếp xếp -> cả nhiệm vụ huỷ', () => {
   send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T09'], robot: 'any' });
   const id = last().id;
-  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer' });
+  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer', table: 'T09' });
   assert.strictEqual(M(id).status, 'cancelled');
 });
 
@@ -411,7 +411,7 @@ scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi g
   send({ type: 'call', point: 'T05', what: 'staff', by: 'Khách Bàn 05 (QR)' });
   assert.strictEqual(calls().length, 1);
   assert.strictEqual(calls()[0].text, 'Bàn 05 gọi nhân viên');
-  assert.ok(events.some(e => e.stationSound === 'ding' && e.point === undefined), 'every station hears it');
+  assert.ok(events.some(e => e.stationSound === 'ding' && e.point === 'bar'), 'the request station hears it');
   events = [];
   for (let i = 0; i < 9; i++) send({ type: 'call', point: 'T05', what: 'staff' });
   assert.strictEqual(calls().length, 1, 'ten taps, one alert');
@@ -420,7 +420,7 @@ scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi g
   send({ type: 'call', point: 'T05', what: 'staff' });
   assert.strictEqual(calls().length, 1, 'new alert after ack');
   send({ type: 'call', point: 'T05', what: 'bill' });
-  assert.ok(st.alerts.some(a => a.key === 'call-bill-T05' && a.text === 'Bàn 05 xin hoá đơn'));
+  assert.ok(st.alerts.some(a => a.key === 'call-bill-T05' && a.text === 'Bàn 05 yêu cầu tính tiền'));
   events = [];
   send({ type: 'call', point: 'T05', what: 'paid', amount: '120.000đ' });   // pre-bill pay screen
   assert.ok(!st.alerts.some(a => a.key === 'call-paid-T05'), 'paid is no longer a call');
@@ -434,9 +434,9 @@ scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi g
 {
   const off = JSON.parse(JSON.stringify(site)); off.features = { ...off.features, call: false };
   const st7 = O.init(off, now);
-  O.handle(st7, off, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
+  const r7 = O.handle(st7, off, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
   assert.strictEqual(st7.alerts.length, 0, 'feature off: no alert');
-  assert.strictEqual(st7.log[0].level, 'warn');
+  assert.strictEqual(JSON.parse(r7.ui[0].payload).code, 'disabled');
   const none = JSON.parse(JSON.stringify(site)); delete none.features;
   const st8 = O.init(none, now);
   O.handle(st8, none, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
@@ -595,8 +595,8 @@ scenario('gọi món 2 danh mục -> mỗi trạm một cảnh báo, chỉ món 
 {
   const off = JSON.parse(JSON.stringify(site)); off.features.order = false;
   const st10 = O.init(off, now);
-  O.handle(st10, off, { source: 'ui', data: { by: 'Khách', type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }] } }, now);
-  assert.deepStrictEqual([st10.orders.length, st10.alerts.length, st10.log[0].level], [0, 0, 'warn']);
+  const r10 = O.handle(st10, off, { source: 'ui', data: { by: 'Khách', type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }] } }, now);
+  assert.deepStrictEqual([st10.orders.length, st10.alerts.length, JSON.parse(r10.ui[0].payload).code], [0, 0, 'disabled']);
   console.log('✓ order refused when features.order is off');
 }
 
