@@ -1,7 +1,7 @@
 # Robot Valetudo — cấu hình & chạy thử
 
 Dành cho buổi thử từ xa với đối tác (RustDesk → Termux trên điện thoại chạy Node-RED).
-Thiết kế: `docs/superpowers/specs/2026-10-27-valetudo-mqtt-adapter-design.md` (adapter) và `2026-10-28-site-config-valetudo-map-design.md` (cấu hình trên màn hình, bản đồ, tự xử lý khi bị chặn).
+Thiết kế: `docs/superpowers/specs/2026-10-27-valetudo-mqtt-adapter-design.md` (adapter), `2026-10-28-site-config-valetudo-map-design.md` (cấu hình trên màn hình, bản đồ, tự xử lý khi bị chặn) và [`2026-10-30-restaurant-feature-policy-design.md`](superpowers/specs/2026-10-30-restaurant-feature-policy-design.md) (tính năng theo mô hình nhà hàng, tính tiền do nhân viên xác nhận).
 
 > An toàn: luôn có một người đứng cạnh robot, sẵn sàng bấm nút vật lý trên robot. Màn hình trạm chỉ là điều khiển, không phải hệ an toàn.
 
@@ -17,7 +17,7 @@ Robot vào cổng 1883 **có mật khẩu** (không có thì ai cùng Wi-Fi nhà
 Mật khẩu tạo một lần, giữ qua các lần cài lại: `cat ~/robot/.mqtt-pass`.
 Đặt **IP cố định** cho điện thoại trên router (DHCP reservation) trước bước 1 — Valetudo lưu IP này, đổi IP là robot mất kết nối.
 Cấu hình (bàn, trạm, điểm dừng, topic, núm chỉnh) nằm trong `~/robot/context/` của Node-RED, **cài lại không mất**.
-Nâng cấp từ bản cũ (cấu hình trong `site.json`): script giữ lại `~/robot/site.json.old`; chép sang Downloads (`termux-setup-storage` rồi `cp ~/robot/site.json.old ~/storage/downloads/`) → setup.html → Sao lưu → **Nhập JSON** → Lưu. Toạ độ cũ tự chuyển vào robot R1. Trước khi cài lại nên bấm **Tải xuống JSON** trong trang Cấu hình để có bản sao.
+Nâng cấp bản đã có tính tiền / cấu hình version 2: làm theo **2d** (sao lưu context trước khi cài). Nâng cấp từ bản rất cũ (cấu hình trong `site.json`): script giữ lại `~/robot/site.json.old`; chép sang Downloads (`termux-setup-storage` rồi `cp ~/robot/site.json.old ~/storage/downloads/`) → setup.html → Sao lưu → **Nhập JSON** → Lưu. Toạ độ cũ tự chuyển vào robot R1. Trước khi cài lại nên bấm **Tải xuống JSON** trong trang Cấu hình để có bản sao.
 
 ## 1. Valetudo → MQTT
 
@@ -39,7 +39,7 @@ Nên bật **persistent map** (khoá bản đồ): robot tạo lại bản đồ
 
 ## 2. Khai robot và bàn trong trang Cấu hình
 
-Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → thẻ **Cấu hình**; màn trạm → **Giám sát** cũng có liên kết **Cấu hình ↗** trên thanh trên). Các tab nằm trên thanh trên cùng: **Điểm & bản đồ · Robot · Vai trò & thời gian · Khách hàng · Sao lưu · Hệ thống**; nút **Lưu** / **Huỷ thay đổi** ở góc phải. Ai có link cũng vào được.
+Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → thẻ **Cấu hình**; màn trạm → **Giám sát** cũng có liên kết **Cấu hình ↗** trên thanh trên). Các tab nằm trên thanh trên cùng: **Điểm & bản đồ · Robot · Vai trò & thời gian · Tính năng · Sao lưu · Hệ thống**; nút **Lưu** / **Huỷ thay đổi** ở góc phải. Ai có link cũng vào được.
 
 1. Tab **Robot**: R1 chọn **Robot thật** (không phải *Giả lập*) → ô *Topic MQTT* = `<prefix>/<identifier>` ghi ở bước 1 (vd. `valetudo/InsecureYellowishGoldfish`). Các núm khác để mặc định. Bấm **Lưu**.
    Sau vài giây, màn trạm `station.html?role=ql` phải thấy R1 có pin. Chưa thấy → bước 4a.
@@ -53,19 +53,59 @@ Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → 
 Điểm dừng tốt: nằm trên lối đi, cạnh mép bàn 30–50 cm về phía khách dễ lấy; không chấm vào giữa bàn hay chỗ ghế kéo ra.
 Robot **vẽ lại bản đồ** (reset map) thì mọi toạ độ sai → bật *persistent map* trong Valetudo. Trang Cấu hình cảnh báo vàng khi thấy kích thước bản đồ đổi.
 
-## 2b. Tính năng cho khách (tuỳ chọn, mặc định tắt)
+## 2b. Tính năng (mặc định tắt)
 
-Tab **Khách hàng** → thẻ *Tính năng cho khách*: bật từng mục rồi **Lưu**. Tắt thì nút ẩn khỏi trang QR / màn robot và hệ thống cũng từ chối lệnh đó (ghi nhật ký cảnh báo).
+Tab **Tính năng** (hoặc **Hệ thống** → *Tính năng đang sử dụng* → **Quản lý tính năng**; link cũ `setup.html?tab=guest` vẫn mở tab này). Bật/tắt từng mục rồi **Lưu**. Mỗi mục hiện *Đang bật / Đã tắt / Chưa đủ điều kiện* kèm lý do và nút tới chỗ sửa. Bật khi chưa đủ điều kiện vẫn lưu được, nhưng hệ thống không nhận yêu cầu mới cho tới khi đủ. **Áp dụng gợi ý** (Phục vụ tại bàn, trả sau / Đặt-trả trước tại quầy / Buffet / Tự cấu hình) chỉ đổi bản nháp; xem lại rồi mới **Lưu**.
 
-| Tính năng | Cần gì | Khách thấy | Nhân viên thấy |
+**Trạm nhận yêu cầu** (nhóm *Khách tại bàn*): trạm nghe *ding* cho Gọi nhân viên, Yêu cầu tính tiền và khách báo đã chuyển khoản. Bắt buộc cho ba tính năng đó. Trạm khác vẫn thấy cảnh báo.
+
+| Tính năng | Cần gì | Khách / robot | Nhân viên |
 |---|---|---|---|
-| **Gọi nhân viên / hoá đơn** | không | Trang QR: 2 nút dưới cùng (nghỉ 30 s sau mỗi lần chạm). Màn robot: *Gọi nhân viên* khi giao món / dẫn khách | Mọi trạm: tiếng *ding* + dải cảnh báo "Bàn 05 gọi nhân viên". Chạm thêm không tạo cảnh báo mới tới khi bấm **Đã biết** |
-| **Dẫn khách tới bàn** | robot đang chờ ở một trạm (gọi robot tới trạm) hoặc ở điểm loại *cửa đón khách* (`entrance`, thêm trong `site.json`) | Màn robot: *Dẫn tôi tới bàn* → chọn bàn → *Đi chậm hơn* / *Đã tới bàn* | Nhật ký. Không ai bấm *Đã tới bàn* sau *Chờ khách nhận món* giây → robot tự về |
-| **Gọi món trên robot** | thực đơn (bảng bên trái tab Khách hàng: danh mục + trạm làm, món + giá) | Màn robot: *Gọi món* khi robot đứng yên → chọn bàn nếu robot không ở bàn → *Gửi bếp* | Mỗi trạm làm một cảnh báo chỉ gồm món của mình. Bếp tự gửi lệnh giao như thường |
-| **Thanh toán VietQR** | bật cả *Gọi nhân viên*; mã ngân hàng + số tài khoản (thẻ Thanh toán). Không có Internet → tải ảnh QR tĩnh | Màn robot ở bàn có món đã gọi: *Thanh toán* → hoá đơn + QR → *Tôi đã chuyển khoản* / *Tiền mặt / thẻ* | "Bàn 05 báo đã chuyển khoản · 140.000đ" — **kiểm tra app ngân hàng** trước khi xác nhận với khách |
+| **Thu dọn từ robot** | có bàn, khu rửa chén | Màn robot: *Mang chén về khu rửa* | Thu dọn tạo từ trạm luôn có, không phụ thuộc mục này |
+| **Gọi nhân viên** | bàn + trạm nhận yêu cầu | Trang QR, màn robot: *Gọi nhân viên* | *ding* ở trạm nhận; một cảnh báo mỗi bàn tới khi bấm **Đã biết** |
+| **Yêu cầu tính tiền** | bàn + trạm nhận yêu cầu | *Yêu cầu tính tiền* (độc lập với Gọi nhân viên) | Cảnh báo + bàn hiện trong mục **Tính tiền** của trạm (xem **2c**) |
+| **Gọi món trên robot** | thực đơn: món, giá là số nguyên ≥ 0, danh mục có trạm làm | Robot đứng yên: *Gọi món* → chọn bàn nếu robot không ở bàn → *Gửi bếp* | Mỗi trạm làm nhận cảnh báo món của mình; bếp vẫn tự tạo chuyến giao |
+| **Thanh toán QR trên robot** | trạm nhận + ngân hàng, số tài khoản, tên chủ tài khoản | Robot đứng tại bàn có phiếu: *Thanh toán* → QR đúng tổng của phiếu → *Tôi đã chuyển khoản* | Cảnh báo "khách báo đã chuyển" — **chưa phải đã thu**, xem **2c** |
+| **Dẫn khách tới bàn** | bàn, trạm hoặc cửa đón khách (`entrance`), robot tới được bàn | Robot chờ ở trạm/cửa: *Nhân viên: dẫn khách tới bàn* → chọn và xác nhận bàn → *Đã tới bàn* | Nhật ký. Không ai bấm *Đã tới bàn* sau *Chờ khách nhận món* giây → robot tự về |
 
-Robot Valetudo không chỉnh được tốc độ: *Đi chậm hơn* chỉ ghi nhật ký "không hỗ trợ, bỏ qua".
+**Khách trả/huỷ món** (chọn cách xử lý, không phải bật/tắt): *Báo nhân viên* (mặc định) — khách bấm *Báo nhầm món / Cần hỗ trợ*, robot giữ nguyên chuyến, trạm xuất phát của chuyến nhận cảnh báo, nhân viên tự thu hồi nếu cần. *Khách tự gửi trả* — *Yêu cầu mang món về*, chạm hai lần, robot bỏ điểm giao đó. Cả hai chỉ là xử lý chuyến giao, không phải hoàn tiền.
+
+Robot Valetudo **không chỉnh được tốc độ**: màn robot không có nút *Đi chậm hơn*, lệnh tốc độ gửi tới bị server từ chối (không đổi trạng thái, không gửi gì xuống robot). Chỉ robot giả lập có nút này.
+Tắt một tính năng chỉ chặn yêu cầu mới: cảnh báo, đơn, phiếu và chuyến đang có vẫn xử lý tới cùng.
 **Đổi bàn** (luôn bật): bếp gửi nhầm bàn mà robot đã đi → hàng chờ / thẻ *Lệnh gần nhất* → **Đổi bàn** → chạm bàn đúng. Robot đã tới bàn thì không đổi được (dùng *Trả lại bếp*).
+
+## 2c. Tính tiền — nhân viên xác nhận tiền bằng tay
+
+App không nối với POS hay ngân hàng: **không có gì trong app biết tiền đã vào tài khoản**. Robot chỉ hiện QR; khách bấm *Tôi đã chuyển khoản* là khách **báo**, không phải ngân hàng xác nhận.
+
+1. Trạm → mục **Tính tiền** → chọn bàn (hoặc *Bàn khác* nếu bàn chỉ gọi món ngoài robot). Đối chiếu toàn bộ khoản phải thu ở nguồn của quán (món gọi ngoài robot, giảm giá, phụ thu); tổng từ đơn robot chỉ để tham khảo. Nhập tổng, ghi chú nếu khác tổng tham khảo, đánh dấu *Đã đối chiếu* → **Chuẩn bị phiếu**.
+2. Robot đứng tại bàn hiện QR theo đúng tổng của phiếu, nội dung `Ban 05 phieu 12`. Khách chuyển rồi bấm *Tôi đã chuyển khoản* → robot hiện "Đang chờ nhân viên xác nhận".
+3. Nhân viên mở **app ngân hàng của quán**, thấy giao dịch đúng số tiền và nội dung → chọn *Chuyển khoản* → **Xác nhận đã thu tiền** (chạm hai lần). Tiền mặt / thẻ: thu xong rồi xác nhận như vậy.
+4. **Đóng lượt tính tiền**: đóng đúng các đơn trong phiếu. Bị từ chối nếu bàn còn đơn mới ngoài phiếu hoặc robot còn đang giao tới bàn.
+
+Phiếu sai và chưa thu: **Vô hiệu hóa phiếu** (cần lý do, đơn giữ nguyên). Khách đã báo chuyển mà phải vô hiệu hóa → kiểm tra giao dịch trước khi tạo phiếu mới. Phiếu đã xác nhận thu không vô hiệu hóa được; điều chỉnh / hoàn tiền làm ngoài app. Bàn đang có phiếu không nhận gọi món mới. Đổi ngân hàng / số tài khoản khi còn phiếu chờ trả bị từ chối lưu. **Đã biết** trên cảnh báo chỉ tắt cảnh báo, không đóng đơn hay đổi trạng thái tiền. Tên người thao tác chỉ là nhãn, không phải xác thực tài khoản.
+
+**Lưu trữ**: đơn và phiếu chưa đóng giữ qua ngày và qua khởi động lại. Phiếu đã đóng / vô hiệu hóa và đơn đã đóng giữ 30 ngày kể từ lúc đóng rồi tự dọn. Đây là dữ liệu vận hành, không thay sổ kế toán.
+
+## 2d. Phiên bản cấu hình, nâng cấp và quay lại bản cũ
+
+- Cấu hình lưu từ bản này là **version 2** (`featurePolicyVersion: 2`); file **Tải xuống JSON** cũng là version 2.
+- Cấu hình cũ (lưu bởi bản trước) chạy ngay khi khởi động, hiểu như hành vi cũ và **không tự bật thêm gì**: *Gọi nhân viên* và *Yêu cầu tính tiền* theo ô gọi nhân viên cũ; dẫn khách, gọi món, thanh toán giữ nguyên; thu dọn từ robot bật; khách tự gửi trả; trạm nhận = trạm đầu tiên. Bản này không tự ghi đè: tab Tính năng báo "Cấu hình cũ…" → kiểm tra **Trạm nhận yêu cầu** → **Lưu** một lần để ghi version 2. Nhập file JSON cũ cũng được chuyển sang version 2 trước khi Lưu.
+- Sau khi đã lưu version 2, trang Cấu hình cũ còn trong cache của tablet bị từ chối lưu ("trang cấu hình đã cũ — tải lại trang"): tải lại trang.
+- Máy **chưa từng lưu cấu hình** (đang chạy dữ liệu mặc định) và **Khôi phục mặc định**: dữ liệu mặc định mới tắt mọi tính năng (cả thu dọn từ robot), khách báo nhân viên, chưa có trạm nhận. Bật lại trong tab Tính năng.
+
+Nâng cấp (lõi và giao diện luôn cùng một gói, không cập nhật riêng phần nào):
+1. Cấu hình → Sao lưu → **Tải xuống JSON**. Nên đóng hoặc ghi lại các phiếu đang mở.
+2. Dừng Node-RED rồi chép state (đơn, phiếu, robot, cấu hình):
+   ```sh
+   pkill -f start-nodered; pkill -f node-red
+   cp -r ~/robot/context ~/robot/context.bak-$(date +%Y%m%d-%H%M)
+   ```
+3. Cài gói mới bằng lệnh ở bước **0**.
+4. Tải lại mọi tablet: trạm, màn robot, trang QR đang mở.
+5. Tab **Tính năng**: kiểm tra, **Lưu** một lần.
+
+Không bao giờ chạy bản cũ trên state đã có phiếu tính tiền: bản cũ không biết phiếu, và **Đã biết** trên yêu cầu tính tiền sẽ xoá đơn của bàn. Quay lại bản cũ = khôi phục bản chép trong một lần dừng: dừng Node-RED như bước 2 → `rm -rf ~/robot/context && cp -r ~/robot/context.bak-<thời điểm> ~/robot/context` → cài gói cũ. Đơn / phiếu tạo sau khi nâng cấp mất khỏi app: đối chiếu lại bằng tay.
 
 ## 3. Núm chỉnh robot (tab Robot → **Nâng cao · 9 thông số**, chỉ khi cần)
 
@@ -135,6 +175,7 @@ e. **Dừng / chạy tiếp / dừng khẩn** khi robot đang chạy: robot ph�
 - Lối đi chính không có ghế kéo ra, thùng, dây điện; thảm/ngưỡng cửa robot qua được.
 - Một người biết nút dừng vật lý trên robot và nút **DỪNG** trên màn robot.
 - Sau khi đổi sơ đồ bàn: **Tải xuống JSON** để sao lưu.
+- Trạm → **Tính tiền**: không còn phiếu chờ xác nhận từ ca trước (khách báo chuyển khoản → kiểm tra app ngân hàng).
 
 ## 7. Thực hành tốt với robot giao đồ ăn
 
