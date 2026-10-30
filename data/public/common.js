@@ -1,5 +1,5 @@
 // Shared by station / robot / table pages: messaging (via transport.js), MP3 cues, labels, small UI helpers.
-const App = { site: null, state: null, map: null, skew: 0 };
+const App = { site: null, state: null, map: null, skew: 0, migrated: false };   // migrated: the live site is still in the pre-v2 format
 // ?orient=portrait forces the portrait layout (screenshot aid); CSS mirrors the orientation media query under :root[data-orient=portrait].
 if (new URLSearchParams(location.search).get('orient') === 'portrait') document.documentElement.dataset.orient = 'portrait';
 
@@ -8,7 +8,7 @@ function connect(onMsg) {
   Transport.connect(raw => {
     let m;
     try { m = JSON.parse(raw); } catch (err) { return; }
-    if (m.type === 'site') App.site = m.site;
+    if (m.type === 'site') { App.site = m.site; App.migrated = !!m.migrated; }
     if (m.type === 'map') App.map = m.map;
     if (m.type === 'state') { App.state = m; App.skew = Date.now() - m.now; }
     if (App.site) onMsg(m);
