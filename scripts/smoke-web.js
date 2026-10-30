@@ -75,6 +75,24 @@ const assert = require("node:assert/strict");
   assert(qb.some((t) => t.includes("Gọi nhân viên")) && qb.some((t) => t.includes("Yêu cầu tính tiền")), qb.join("|"));
   assert.deepEqual(errors, []);
   console.log("✓ demo feature settings saved in one browser context leave another on the seed defaults");
+
+  // "Xoá dữ liệu demo" with a bill open is refused and keeps the saved settings; once the bill is voided it goes back to
+  // site.json, and the next bill gets a new number.
+  const prep = (requestId) => pa.evaluate((requestId) => send({ type: "billPrepare", table: "T05", orderIds: [], total: 1000, note: "Smoke", requestId, by: "Smoke" }), requestId);
+  await prep("web-p1");
+  await pa.waitForFunction(() => App.state.bills.length === 1);
+  await pa.evaluate(() => { window.replies = []; const s = settle; settle = (m) => { replies.push(m); return s(m); }; send({ type: "reset", by: "Smoke" }); });
+  await pa.waitForFunction(() => replies.length);
+  assert.deepEqual(await pa.evaluate(() => [replies[0].ok, replies[0].code, App.site.features.callStaff, App.state.bills.length]), [false, "billing", false, 1]);
+  const bill = await pa.evaluate(() => App.state.bills[0]);
+  await pa.evaluate((b) => { send({ type: "billVoid", bill: b.id, rev: b.rev, reason: "Smoke", requestId: "web-v1", by: "Smoke" }); send({ type: "reset", by: "Smoke" }); }, bill);
+  await pa.waitForFunction(() => App.site.features.callStaff === true && !App.state.bills.length);
+  assert.deepEqual(await pa.evaluate(() => App.site.features), seed.features);
+  await prep("web-p2");
+  await pa.waitForFunction(() => App.state.bills.length === 1);
+  assert.equal(await pa.evaluate(() => App.state.bills[0].id), bill.id + 1);
+  assert.deepEqual(errors, []);
+  console.log("✓ demo reset refused while a bill is open keeps the saved settings; afterwards back to site.json, bill numbers go on");
   await browser.close();
 })().catch((e) => {
   console.error(e);

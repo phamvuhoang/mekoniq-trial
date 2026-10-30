@@ -91,6 +91,15 @@ const spyReplies = (page) => page.evaluate(() => { window.replies = []; const s 
 // Keeps this page's messages of one type in window.held (the tap stays pending) until the test sends them with realSend.
 const hold = (page, type) => page.evaluate((type) => { window.held = []; window.realSend = send; send = (o) => (o.type === type ? held.push(o) : realSend(o)); }, type);
 const fits = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight);
+// The server refuses a demo reset while a bill is open: close the settled ones and void the rest first, like staff would.
+async function reset(page) {
+  await page.waitForFunction(() => App.state);
+  await page.evaluate(() => { for (const b of App.state.bills) send(b.status === "settled" ? { type: "billClose", bill: b.id, rev: b.rev, requestId: "smoke-close-" + b.id, by: "smoke" }
+    : { type: "billVoid", bill: b.id, rev: b.rev, reason: "Smoke: dọn trước khi reset", requestId: "smoke-void-" + b.id, by: "smoke" }); });
+  await page.waitForFunction(() => !App.state.bills.length);
+  const t0 = await page.evaluate(() => { send({ type: "reset", by: "smoke" }); return serverNow(); });
+  await page.waitForFunction((t0) => App.state.log.some((l) => l.t >= t0 && l.text === "smoke khởi động lại demo"), t0);
+}
 // One fresh context per scenario: empty state (reset), then the same saved site — every feature off, no request station —
 // changed by edit(site) for this scenario.
 // SMOKE_ONLY=<regex> runs the matching scenarios only (e.g. SMOKE_ONLY=billing).
@@ -99,7 +108,7 @@ async function scenario(name, fn, edit = () => {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   try {
     const page = await open(context, "setup.html");
-    await page.evaluate(() => send({ type: "reset", by: "smoke" }));
+    await reset(page);
     const site = structuredClone(fixture);
     edit(site);
     await page.evaluate((f) => { D = structuredClone(f); D.rev = App.site.rev; setDirty(true); }, site);
@@ -204,6 +213,7 @@ async function scenario(name, fn, edit = () => {}) {
     await scenario("preset changes only the draft, lists the changes, a later toggle makes it custom", async (context) => {
       const page = await open(context, "setup.html?tab=features");
       const rev = await page.evaluate(() => App.site.rev);
+      assert.equal(await page.locator("#preset").inputValue(), "custom", "the picker opens on the current profile");
       await page.evaluate(() => { window.sent = []; const s = send; send = (o) => { sent.push(o.type); s(o); }; });
       await page.selectOption("#preset", "table-service");
       await page.locator("#applyPreset").click();
@@ -217,7 +227,7 @@ async function scenario(name, fn, edit = () => {}) {
       const other = await open(context, "setup.html");
       assert.deepEqual(await other.evaluate(() => [App.site.rev, App.site.features.callStaff, App.site.serviceProfile]), [rev, false, "custom"]);
       await page.locator('[data-feat="busRobot"]').check();
-      assert.equal(await page.evaluate(() => D.serviceProfile), "custom");
+      assert.deepEqual(await page.evaluate(() => [D.serviceProfile, $("preset").value]), ["custom", "custom"]);
       await page.locator('[data-cancel="direct"]').click();
       await expectText(page, "#featNote", "Khách trả/huỷ món: Báo nhân viên → Khách tự gửi trả");
       await page.locator("#revert").click();
@@ -323,7 +333,7 @@ async function scenario(name, fn, edit = () => {}) {
       await guest.waitForFunction(() => !document.querySelector('[data-act="returnRequest"]') && toasts.some((x) => /sửa nhầm bàn/.test(x)));
     }, (s) => { s.features.requestBill = true; s.service.requestStation = "bar"; s.notes = []; });
 
-    await scenario("robot order: off keeps the open cart, back on drops items gone from the menu, only the ok reply empties it", async (context) => {
+    await scenario("robot order: off keeps the open cart, back on drops items gone from the menu, only the ok reply empties it, a retry after a lost reply is one order", async (context) => {
       const robot = await app(context, "robot.html?robot=R1");
       await robot.locator("#start").click();
       await robot.locator('[data-act="order"]').click();
@@ -343,10 +353,17 @@ async function scenario(name, fn, edit = () => {}) {
       await push(context, (s) => { s.features.order = true; s.menu.items = s.menu.items.filter((i) => i.id !== "buncha"); });
       await robot.waitForFunction(() => !document.querySelector('[data-act="orderSend"]').disabled);
       assert.deepEqual(await robot.evaluate(() => [cart, toasts]), [{ pho: 1 }, ["Món không còn trong thực đơn đã được bỏ khỏi giỏ · Items no longer on the menu were removed"]]);
+      // The first reply is lost: "try again" resends the unchanged cart with the same requestId, so the kitchen gets one order.
+      await hold(robot, "order");
       await robot.locator('[data-act="orderSend"]').click();
-      await robot.waitForFunction(() => !ordering);
-      assert.deepEqual(await robot.evaluate(() => [cart, toasts.at(-1), App.state.orders.map((o) => o.table + ":" + o.items.map((i) => i.id))]),
-        [{}, "Đã gửi bếp · Sent to the kitchen", ["T05:pho"]]);
+      await robot.evaluate(() => settle({ requestId: held[0].requestId, ok: false, code: "timeout" }));   // what REPLY_MS does
+      await robot.locator('[data-act="orderSend"]').click();
+      await spyReplies(robot);
+      await robot.evaluate(() => { send = realSend; for (const m of held) send(m); });
+      await robot.waitForFunction(() => replies.length === 2 && !ordering && App.state.orders.length);
+      assert.deepEqual(await robot.evaluate(() => [held.length, held[1].requestId === held[0].requestId, replies.map((r) => [r.ok, !!r.duplicate]), cart, toasts.slice(-2),
+        App.state.orders.map((o) => o.table + ":" + o.items.map((i) => i.id))]),
+        [2, true, [[true, false], [true, true]], {}, ["Chưa nhận được xác nhận — vui lòng thử lại · No confirmation yet — please try again", "Đã gửi bếp · Sent to the kitchen"], ["T05:pho"]]);
     }, (s) => { s.features.order = true; });
 
     await scenario("guide: staff pick and confirm; slow button only on the simulator; guide off mid-trip still finishes; bus off hides robot shortcuts", async (context) => {
@@ -419,7 +436,7 @@ async function scenario(name, fn, edit = () => {}) {
       for (const p of [r1, r2]) await p.locator("#start").click();
       await summon(st, "R1", "T05");
       await summon(st, "R2", "bar");
-      await st.evaluate(() => send({ type: "billPrepare", table: "T05", orderIds: [], total: 0, note: "Smoke", requestId: "smoke-flags-bill", by: "Smoke" }));
+      await st.evaluate(() => send({ type: "billPrepare", table: "T05", orderIds: [], total: 0, note: "Smoke", requestId: "smoke-flags-bill-" + Date.now(), by: "Smoke" }));   // bill receipts outlive a demo reset: one id per run
       await st.waitForFunction(() => App.state.bills.some((b) => b.table === "T05"));
       for (const p of [r1, r2]) await p.evaluate(() => { window.controls = () => [...document.querySelectorAll('[data-mode], [data-act="guide"], [data-act="order"], [data-act="pay"], [data-act="toDish"], [data-act="call"]')].map((b) => (b.dataset.mode ? "mode:" + b.dataset.mode : b.dataset.act)); });
       await qr.evaluate(() => { window.controls = () => [...document.querySelectorAll("[data-call]")].map((b) => b.dataset.call); });
@@ -484,9 +501,10 @@ async function scenario(name, fn, edit = () => {}) {
       await guest.evaluate(() => { send = realSend; Transport.ws.close(); });
       await guest.waitForFunction(() => toasts.length, null, { timeout: 15000 });
       await st.waitForFunction(() => App.state.alerts.some((a) => a.key === "call-staff-T05"));
+      await spyReplies(guest);
       await guest.evaluate(() => realSend(held[0]));
-      await guest.waitForTimeout(500);
-      assert.deepEqual(await guest.evaluate(() => toasts), ["Staff called — please wait"]);
+      await guest.waitForFunction(() => replies.length);
+      assert.deepEqual(await guest.evaluate(() => [replies.map((r) => [r.ok, r.duplicate]), toasts]), [[[true, true]], ["Staff called — please wait"]]);
       assert.equal(await st.evaluate(() => App.state.alerts.filter((a) => a.key === "call-staff-T05").length), 1);
 
       // direct → request mid-trip: the armed cancel becomes the report button; a cached old page's cancel is refused, the trip goes on.
@@ -721,7 +739,7 @@ async function scenario(name, fn, edit = () => {}) {
       await robot.waitForFunction(() => App.state.bills.find((x) => x.table === "T05").status === "settled");
       await robot.evaluate(() => { send = realSend; send(held[0]); });
       await robot.waitForFunction(() => toasts.length);
-      assert.deepEqual(await robot.evaluate(() => toasts), ["Phiếu đã thay đổi, tải lại · This item has changed — please reload"]);
+      assert.deepEqual(await robot.evaluate(() => toasts), ["Phiếu đã thay đổi, tải lại · This has changed — showing the latest"]);
       await expectText(robot, "#body", "Đã được nhân viên xác nhận");
 
       // The bill closes (R1 still on standby there): the next party's form at T05 starts empty on both stations, the race loser's draft included.

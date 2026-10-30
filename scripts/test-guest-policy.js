@@ -22,8 +22,40 @@ test('init, sync and reset own the billing state', () => {
   h.tick(0);
   assert.deepEqual([h.st.billSeq, h.st.bills], [0, []]);
   order1(h); prepare(h);
+  h.send({type: 'billVoid', bill: 1, rev: 1, reason: 'Thử', requestId: 'v'});
   h.send({type: 'reset'});
-  assert.deepEqual([h.st.billSeq, h.st.bills, h.st.orders], [0, [], []]);
+  assert.deepEqual([h.st.billSeq, h.st.bills.map(b => b.status), h.st.orders], [1, ['void'], []], 'open orders go, bill numbers stay');
+});
+
+test('reset is refused while a bill is open; afterwards bill numbers never repeat and old requestIds never hit a new bill', () => {
+  const h = v2();
+  h.send({type: 'order', table: 'T01', items: [{id: 'pho', qty: 1}], requestId: 'o1'});
+  h.send({type: 'billPrepare', table: 'T01', orderIds: [1], total: h.st.orders[0].total, requestId: 'p1'});
+  h.send({type: 'billClaim', bill: 1, rev: 1, requestId: 'c1'});
+  for (const [step, cmd] of [['claimed'], ['settled', {type: 'billSettle', bill: 1, rev: 2, method: 'transfer', requestId: 's1'}]]) {
+    if (cmd) h.send(cmd);
+    const before = JSON.stringify(h.st);
+    h.send({type: 'reset', requestId: 'r'});
+    const rep = reply(h);
+    assert.deepEqual([rep.ok, rep.code, rep.requestId], [false, 'billing', 'r'], step);
+    assert.match(rep.text, /Bàn 01.*đóng lượt hoặc vô hiệu hóa phiếu/, step);
+    assert.equal(JSON.stringify(h.st), before, step + ': a refused reset changes nothing');
+  }
+  h.send({type: 'billClose', bill: 1, rev: 3, requestId: 'x1'});
+  h.send({type: 'reset'});
+  assert.deepEqual([h.st.billSeq, h.st.bills.map(b => [b.id, b.status]), h.st.orders.map(o => [o.id, o.status]), h.st.alerts, h.st.missions],
+    [1, [[1, 'closed']], [[1, 'closed']], [], []], 'closed bills (with receipts) and closed orders survive the wipe');
+  // The next party at the same table: a new order and bill number; the old party's claim retry replays on bill #1.
+  h.send({type: 'order', table: 'T01', items: [{id: 'pho', qty: 2}], requestId: 'o2'});
+  assert.deepEqual(h.st.orders.map(o => o.id), [1, 2]);
+  h.send({type: 'billPrepare', table: 'T01', orderIds: [2], total: h.st.orders[1].total, requestId: 'p2'});
+  assert.equal(reply(h).bill.id, 2);
+  h.send({type: 'billClaim', bill: 1, rev: 1, requestId: 'c1'});
+  let rep = reply(h);
+  assert.deepEqual([rep.ok, rep.duplicate, rep.bill.id, rep.bill.status], [true, true, 1, 'closed']);
+  h.send({type: 'billClaim', bill: 1, rev: 1, requestId: 'c-lost'});
+  assert.equal(reply(h).code, 'stale');
+  assert.deepEqual([h.st.bills[1].status, h.st.bills[1].rev], ['prepared', 1], 'the new bill is untouched');
 });
 
 test('prepare and claim over WS: a claimed amount never changes the bill', () => {
@@ -86,13 +118,19 @@ test('a table being billed takes no new order until the bill is voided', () => {
   h.send({type: 'order', table: 'T01', items: [{id: 'pho', qty: 1}], requestId: 'o1'});
   const rep = reply(h);
   assert.deepEqual([rep.ok, rep.code, rep.requestId], [false, 'billing', 'o1']);
-  assert.ok(rep.text.includes('Bàn đang tính tiền'), rep.text);
+  assert.ok(rep.text.includes('Bàn đang tính tiền') && rep.text.includes('vô hiệu hóa phiếu'), rep.text);
   assert.equal(h.st.orders.length, 1);
   h.send({type: 'order', table: 'T02', items: [{id: 'pho', qty: 1}]});
   assert.equal(h.st.orders.length, 2, 'other tables still order');
   h.send({type: 'billVoid', bill: 1, rev: 1, reason: 'Khách gọi thêm', requestId: 'v'});
   h.send({type: 'order', table: 'T01', items: [{id: 'pho', qty: 1}]});
   assert.equal(h.st.orders.length, 3);
+  // A settled bill cannot be voided: staff close the round first.
+  h.send({type: 'billPrepare', table: 'T02', orderIds: [2], total: h.st.orders[1].total, requestId: 'p2'});
+  h.send({type: 'billSettle', bill: 2, rev: 1, method: 'cash', requestId: 's2'});
+  h.send({type: 'order', table: 'T02', items: [{id: 'pho', qty: 1}], requestId: 'o2'});
+  const text = reply(h).text;
+  assert.ok(text.includes('đóng lượt') && !text.includes('vô hiệu hóa'), text);
 });
 
 test('payment account cannot change while a bill waits for payment', () => {
@@ -565,4 +603,31 @@ test('order with an item gone from the menu or a bad quantity is refused, never 
     const rep = reply(h);
     assert.deepEqual([rep.ok, rep.code, rep.requestId, typeof rep.text, h.st.orders.length, h.st.alerts.length], [false, 'invalid', 'o', 'string', 0, 0], JSON.stringify(items));
   }
+});
+
+test('order receipts: a retry with the same requestId never adds an order or alert, even once the bill is prepared; another cart conflicts', () => {
+  const h = v2();
+  const o = {type: 'order', table: 'T05', items: [{id: 'pho', qty: 2}], requestId: 'o1'};
+  h.send(o);
+  assert.deepEqual([reply(h).ok, h.st.orders.length], [true, 1]);
+  const before = JSON.stringify([h.st.orders, h.st.alerts, h.st.log]);
+  let r = h.send(o);   // the reply was lost: the robot screen sends the same cart again
+  let rep = reply(h);
+  assert.deepEqual([rep.ok, rep.duplicate, rep.requestId, dings(r).length], [true, true, 'o1', 0]);
+  assert.equal(JSON.stringify([h.st.orders, h.st.alerts, h.st.log]), before, 'duplicate: no second order, alert or log');
+  h.send({...o, items: [{id: 'pho', qty: 3}]});
+  rep = reply(h);
+  assert.deepEqual([rep.ok, rep.code, h.st.orders.length], [false, 'request-conflict', 1]);
+  h.send({type: 'billPrepare', table: 'T05', orderIds: [1], total: h.st.orders[0].total, requestId: 'p'});
+  r = h.send(o);   // late retry after staff prepared the bill: still the same order, not a refusal
+  assert.deepEqual([reply(h).duplicate, h.st.orders.length], [true, 1]);
+});
+
+test('a full alert list never drops a guest bill claim', () => {
+  const h = v2();
+  order1(h); prepare(h);
+  h.send({type: 'billClaim', bill: 1, rev: 1, requestId: 'c'});
+  for (let i = 0; i < 25; i++) h.send({type: 'order', table: 'T02', items: [{id: 'pho', qty: 1}]});
+  assert.equal(h.st.alerts.length, 20);
+  assert.ok(alertOf(h, 'bill-claim-1'), 'claim alert kept');
 });
