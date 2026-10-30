@@ -7,10 +7,14 @@ const errs = (mut) => { const s = clone(seed); mut(s); return S.normalize(s, see
 const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expected an error mentioning "${word}" in ${JSON.stringify(list)}`);
 
 {
-  const r = S.normalize(clone(seed), seed);
+  // The production seed is written as v2 with every feature off and normalizes to itself.
+  assert.deepStrictEqual(S.normalize(clone(seed), seed), { site: seed, errors: [] });
+  // The same site saved by the previous version (pre-v2) migrates once without enabling anything new.
+  const r = S.normalize(require('./helpers/legacy-site')(seed), seed);
   assert.deepStrictEqual(r.errors, []);
-  assert.deepStrictEqual(r.site, seed);
-  console.log('✓ seed normalizes to itself');
+  assert.deepStrictEqual(r.site, { ...seed, customerCancel: 'direct', service: { requestStation: 'kitchen' }, features: { ...seed.features, busRobot: true } });
+  assert.deepStrictEqual(S.normalize(clone(r.site), seed), r);
+  console.log('✓ v2 seed normalizes to itself, a pre-v2 site migrates to v2 once');
 }
 {
   has(errs(s => { s.points['1abc'] = { name: 'x', kind: 'table' }; }), '1abc');
@@ -59,9 +63,12 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
 {
   const st = { missions: [{ status: 'active', robot: 'R1', stops: [{ p: 'T01', status: 'active' }, { p: 'T02', status: 'done' }] },
                           { status: 'queued', robot: null, stops: [{ p: 'T03', status: 'pending' }] }],
-    robots: { R1: { mission: 1 }, R2: { mission: null } } };
-  const u = S.inUse(seed, st);
-  assert.deepStrictEqual([...u.points].sort(), ['T01', 'T03']);
+    robots: { R1: { mission: 1 }, R2: { mission: null } },
+    orders: [{ table: 'T04', status: 'new' }, { table: 'T05', status: 'closed' }, { table: 'T06', status: 'paid-claimed' }, { table: 'T99', status: 'new' }],
+    bills: [{ table: 'T07', status: 'claimed' }, { table: 'T08', status: 'closed' }, { table: 'T09', status: 'void' }, { table: 'T98', status: 'prepared' }] };
+  const u = S.inUse(require('../data/site.demo.json'), st);   // T01..T12 exist; T98/T99 are orphans of deleted tables
+  assert.deepStrictEqual([...u.points].sort(), ['T01', 'T03', 'T04', 'T06', 'T07']);
+  assert.deepStrictEqual([...u.tables].sort(), ['T04', 'T06', 'T07']);
   assert.deepStrictEqual([...u.robots], ['R1']);
   console.log('✓ inUse');
 }
@@ -82,4 +89,65 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   assert.deepStrictEqual(r.site.robots[0].valetudo.points, { kitchen: { x: 2351, y: 2544 }, T01: { x: 1890, y: 1420 } });
   assert.strictEqual(r.site.valetudo, undefined);
   console.log('✓ migrates old site.valetudo.points');
+}
+{
+  const s = clone(seed); delete s.features; s.featurePolicyVersion = 2;
+  assert.deepStrictEqual(S.normalize(s, seed).site.features, { callStaff: false, requestBill: false, guide: false, order: false, pay: false, busRobot: false });
+  s.features = { order: 'yes' };
+  has(S.normalize(s, seed).errors, 'order');
+  console.log('✓ v2 features default to off, non-booleans rejected');
+}
+{
+  const s = clone(seed); delete s.notes;
+  assert.deepStrictEqual(S.normalize(s, seed).site.notes, ['Không hành', 'Ít cay', 'Món nóng', 'Thêm chén']);
+  s.notes = ['  Ít đá ', '', 'x'.repeat(30), 42, 'a', 'b', 'c', 'd', 'e', 'f', 'g'];
+  const n = S.normalize(s, seed).site.notes;
+  assert.deepStrictEqual(n, ['Ít đá', 'x'.repeat(24), '42', 'a', 'b', 'c', 'd', 'e']);
+  s.notes = ['', '  '];
+  assert.deepStrictEqual(S.normalize(s, seed).site.notes, [], 'all empty -> no chips, on purpose');
+  s.notes = 'Ít cay';
+  has(S.normalize(s, seed).errors, 'Ghi chú');
+  console.log('✓ quick notes trimmed, capped, defaulted only when missing');
+}
+{
+  const s = clone(seed); s.points.door = { name: 'Cửa đón khách', kind: 'entrance' };
+  assert.deepStrictEqual(S.normalize(s, seed).errors, []);
+  console.log('✓ entrance points accepted');
+}
+{
+  const s = clone(seed); delete s.menu;
+  assert.deepStrictEqual(S.normalize(s, seed).site.menu, { cats: [], items: [] });
+  s.points.bar = { name: 'Quầy', kind: 'station' };
+  s.menu = { cats: [{ id: 'mon', vi: 'Món', en: 'Mains' }, { id: 'nuoc', vi: 'Nước', en: 'Drinks', station: 'bar' }],
+    items: [{ id: 'pho', cat: 'mon', vi: 'Phở', en: 'Pho', price: '65000' }, { id: 'tra', cat: 'nuoc', vi: 'Trà', price: 5000 }] };
+  const r = S.normalize(s, seed);
+  assert.deepStrictEqual(r.errors, []);
+  assert.strictEqual(r.site.menu.cats[0].station, 'kitchen');
+  assert.strictEqual(r.site.menu.items[0].price, 65000);
+  assert.strictEqual(r.site.menu.items[1].en, 'Trà');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'zz', vi: 'P', price: 1 }] }; }), 'zz');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'a', vi: 'P', price: -1 }] }; }), 'price');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'a', vi: 'P', price: 1.5 }] }; }), 'price');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A' }], items: [{ id: 'p', cat: 'a', vi: 'P', price: 1 }, { id: 'p', cat: 'a', vi: 'Q', price: 1 }] }; }), 'trùng');
+  has(errs(x => { x.menu = { cats: [{ id: 'a', vi: 'A', station: 'D1' }], items: [] }; }), 'D1');
+  console.log('✓ menu validated');
+}
+{
+  // Review: a site whose stations are not called "kitchen" must not silently route orders to a missing point.
+  const s = clone(seed); const { kitchen, ...rest } = s.points; s.points = { bep: kitchen, ...rest };
+  s.menu = { cats: [{ id: 'mon', vi: 'Món' }], items: [] };
+  assert.strictEqual(S.firstStation(s), 'bep');
+  assert.strictEqual(S.normalize(s, seed).site.menu.cats[0].station, 'bep');
+  has(errs(x => { x.points.bep = x.points.kitchen; delete x.points.kitchen; x.menu = { cats: [{ id: 'a', vi: 'A', station: 'kitchen' }], items: [] }; }), 'kitchen');
+  console.log('✓ category station defaults to the first station point');
+}
+{
+  const s = clone(seed); delete s.payment;
+  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: '', account: '', name: '', verification: 'staff' });
+  s.payment = { bank: ' VCB ', account: '0123 456 789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA' };
+  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: 'VCB', account: '0123456789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA', verification: 'staff' });
+  has(errs(x => { x.payment = { account: '12ab' }; }), 'account');
+  has(errs(x => { x.payment = { qr: 'http://evil/x.png' }; }), 'qr');
+  has(errs(x => { x.payment = { qr: 'data:image/png;base64,' + 'A'.repeat(210 * 1024) }; }), 'qr');
+  console.log('✓ payment validated');
 }

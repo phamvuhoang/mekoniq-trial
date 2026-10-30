@@ -65,5 +65,35 @@
       "name": "Sạc 1",
       "kind": "dock"
     }
+  },
+  "featurePolicyVersion": 2,
+  "serviceProfile": "custom",
+  "features": {
+    "callStaff": false,
+    "requestBill": false,
+    "guide": false,
+    "order": false,
+    "pay": false,
+    "busRobot": false
+  },
+  "customerCancel": "request",
+  "service": {
+    "requestStation": null
+  },
+  "notes": [
+    "Không hành",
+    "Ít cay",
+    "Món nóng",
+    "Thêm chén"
+  ],
+  "menu": {
+    "cats": [],
+    "items": []
+  },
+  "payment": {
+    "bank": "",
+    "account": "",
+    "name": "",
+    "verification": "staff"
   }
 }

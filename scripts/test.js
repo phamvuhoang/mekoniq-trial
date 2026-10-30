@@ -1,6 +1,8 @@
 // Scenario test for orchestrator + simulator with a fake clock: node scripts/test.js
 const assert = require('assert');
-const O = require('../data/lib/orchestrator'), S = require('../data/lib/simulator'), site = require("../data/site.demo.json");
+const O = require('../data/lib/orchestrator'), S = require('../data/lib/simulator');
+// These scenarios cancel as the guest directly; the demo seed itself uses the 'request' policy.
+const site = { ...require("../data/site.demo.json"), customerCancel: 'direct' };
 
 let now = 1e12;
 const st = O.init(site, now), sim = S.init(site);
@@ -40,7 +42,7 @@ scenario('giao 2 bàn, khách bàn 07 huỷ khi robot tới -> mang về bếp',
   assert(events.some(e => e.robotSound === 'arrived' && e.table === 'T05'));
   confirm('R1');
   until('T07', atStop('R1', 'handoff', 'T07'));
-  send({ type: 'cancelStop', mission: id, stop: 2, why: 'customer', by: 'Khách Bàn 07' });
+  send({ type: 'cancelStop', mission: id, stop: 2, why: 'customer', table: 'T07', by: 'Khách Bàn 07' });
   until('return', atStop('R1', 'return', 'kitchen'));
   assert.deepStrictEqual(stopOf('R1').trays, [{ tray: 2, table: 'T07' }]);
   confirm('R1');
@@ -90,7 +92,7 @@ scenario('trạm huỷ giữa đường khi đã xếp đồ -> mang về quầy
 scenario('khách huỷ trước khi bếp xếp -> cả nhiệm vụ huỷ', () => {
   send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T09'], robot: 'any' });
   const id = last().id;
-  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer' });
+  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer', table: 'T09' });
   assert.strictEqual(M(id).status, 'cancelled');
 });
 
@@ -404,5 +406,261 @@ scenario('chuyển xử lý thủ công', () => {
   pump({ source: 'adapter', data: { event: 'resolve', key: 'k2' } });
   console.log('✓ adapter alert / resolve events');
 }
+
+// ---- Phase 2 Task 1: call staff / bill / paid ----
+scenario('khách gọi nhân viên: 1 cảnh báo tới khi Đã biết, rồi gọi lại được', () => {
+  const calls = () => st.alerts.filter(a => a.key === 'call-staff-T05');
+  send({ type: 'call', point: 'T05', what: 'staff', by: 'Khách Bàn 05 (QR)' });
+  assert.strictEqual(calls().length, 1);
+  assert.strictEqual(calls()[0].text, 'Bàn 05 gọi nhân viên');
+  assert.ok(events.some(e => e.stationSound === 'ding' && e.point === site.service.requestStation), 'the request station hears it');
+  events = [];
+  for (let i = 0; i < 9; i++) send({ type: 'call', point: 'T05', what: 'staff' });
+  assert.strictEqual(calls().length, 1, 'ten taps, one alert');
+  assert.ok(!events.some(e => e.stationSound), 'no extra ding while the alert is open');
+  send({ type: 'ack', alert: calls()[0].id });
+  send({ type: 'call', point: 'T05', what: 'staff' });
+  assert.strictEqual(calls().length, 1, 'new alert after ack');
+  send({ type: 'call', point: 'T05', what: 'bill' });
+  assert.ok(st.alerts.some(a => a.key === 'call-bill-T05' && a.text === 'Bàn 05 yêu cầu tính tiền'));
+  events = [];
+  send({ type: 'call', point: 'T05', what: 'paid', amount: '120.000đ' });   // pre-bill pay screen
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T05'), 'paid is no longer a call');
+  assert.ok(events.some(e => e.reply && e.ok === false && e.code === 'reload'));
+  const n = st.alerts.length;
+  send({ type: 'call', point: 'kitchen', what: 'staff' });   // not a table
+  send({ type: 'call', point: 'T05', what: 'beer' });
+  assert.strictEqual(st.alerts.length, n, 'invalid point / what ignored');
+});
+
+{
+  const off = require('./helpers/legacy-site')(site); off.features.call = false;   // pre-v2 config: call:false = no calls
+  const st7 = O.init(off, now);
+  const r7 = O.handle(st7, off, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
+  assert.strictEqual(st7.alerts.length, 0, 'feature off: no alert');
+  assert.strictEqual(JSON.parse(r7.ui[0].payload).code, 'disabled');
+  const none = JSON.parse(JSON.stringify(off)); delete none.features;
+  const st8 = O.init(none, now);
+  O.handle(st8, none, { source: 'ui', data: { by: 'QR', type: 'call', point: 'T05', what: 'staff' } }, now);
+  assert.strictEqual(st8.alerts.length, 0, 'no features block = all off');
+  console.log('✓ call refused when features.call is off');
+}
+
+// ---- Phase 2 Task 2: retarget a delivery while the robot is on its way ----
+scenario('đổi bàn khi robot đang đi: tới bàn mới, không về bếp', () => {
+  send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T05', 'T07'], robot: 'R1' });
+  const id = last().id;
+  until('load', atStop('R1', 'load', 'kitchen'));
+  confirm('R1');
+  run(1);
+  assert.strictEqual(R('R1').target, 'T05');
+  const H = d => O.handle(st, site, { source: 'ui', data: { by: 'Bếp', type: 'retarget', mission: id, ...d }, session: 'S' }, now);
+  const reply = r => r.ui.filter(u => u.session === 'S').map(u => JSON.parse(u.payload).text);
+  assert.deepStrictEqual(reply(H({ stop: 1, to: 'T07' })), ['Không đổi được: bàn đã có trong chuyến']);
+  assert.strictEqual(M(id).stops[1].p, 'T05');
+  H({ stop: 2, to: 'T09' });   // pending second stop: only the stop changes
+  assert.strictEqual(M(id).stops[2].p, 'T09');
+  assert.strictEqual(R('R1').target, 'T05');
+  const staff = st.kpi.cancelledStaff;
+  events = [];
+  send({ type: 'retarget', mission: id, stop: 1, to: 'T03' });
+  assert.strictEqual(R('R1').target, 'T03');
+  assert.strictEqual(M(id).label, `#${id} Giao Bếp → Bàn 03, 09`);
+  assert.strictEqual(st.kpi.cancelledStaff, staff);
+  assert.ok(events.some(e => e.table === 'T05' && e.moved === 'T03') && events.some(e => e.table === 'T03'));
+  assert.ok(!events.some(e => e.robotSound || e.stationSound), 'no sounds');
+  until('T03', atStop('R1', 'handoff', 'T03'));
+  assert.deepStrictEqual(reply(H({ stop: 1, to: 'T08' })), ['Không đổi được: robot đã tới bàn']);
+  assert.strictEqual(M(id).stops[1].p, 'T03');
+  confirm('R1');
+  until('T09', atStop('R1', 'handoff', 'T09'));
+});
+
+// ---- Phase 2 Task 5: bus a table from the robot standby screen ----
+scenario('robot chờ ở bếp -> thu dọn Bàn 05 từ màn robot', () => {
+  send({ type: 'create', kind: 'summon', to: 'kitchen', robot: 'R3' });
+  const id = last().id;
+  until('standby', atStop('R3', 'standby', 'kitchen'));
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['T05', 'T07'], bus: true });   // one table only
+  assert.strictEqual(R('R3').phase, 'atStop');
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['dish'], bus: true });          // not a table
+  assert.strictEqual(R('R3').phase, 'atStop');
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['T05'], bus: true });
+  assert.strictEqual(R('R3').phase, 'toStop');
+  assert.strictEqual(R('R3').target, 'T05');
+  assert.strictEqual(M(id).kind, 'bus');
+  assert.strictEqual(M(id).label, `#${id} Thu dọn Bàn 05`);
+  assert.ok(st.log.some(l => l.text === `test giao việc cho R3: #${id} Thu dọn Bàn 05`));
+  until('collect', atStop('R3', 'collect', 'T05'));
+  confirm('R3');
+  until('dish', atStop('R3', 'unload', 'dish'));
+  confirm('R3');
+  assert.strictEqual(M(id).status, 'done');
+});
+
+scenario('thu dọn từ màn robot bị từ chối khi robot chờ ở bàn', () => {
+  send({ type: 'create', kind: 'summon', to: 'T02', robot: 'R3' });
+  const id = last().id;
+  until('standby', atStop('R3', 'standby', 'T02'));
+  send({ type: 'dispatch', robot: 'R3', mission: id, tables: ['T05'], bus: true });
+  assert.strictEqual(R('R3').phase, 'atStop');
+  assert.strictEqual(M(id).kind, 'summon');
+});
+
+// ---- Phase 2 Task 6: guide guests to a table + slow mode ----
+scenario('dẫn khách từ bếp tới Bàn 07, đi chậm, khách xác nhận', () => {
+  send({ type: 'create', kind: 'guide', to: 'T07', robot: 'R1' });   // idle at the dock: refused
+  assert.strictEqual(st.missions.length, 0);
+  send({ type: 'create', kind: 'summon', to: 'kitchen', robot: 'R1' });
+  const sid = last().id;
+  until('standby', atStop('R1', 'standby', 'kitchen'));
+  send({ type: 'create', kind: 'guide', to: 'kitchen', robot: 'R1' });   // not a table
+  send({ type: 'create', kind: 'guide', to: 'T07', robot: 'any' });      // only from a robot screen
+  assert.strictEqual(st.missions.length, 1);
+  send({ type: 'create', kind: 'guide', to: 'T07', robot: 'R1', by: 'Khách' });
+  assert.strictEqual(M(sid).status, 'done', 'standby handed over');
+  const g = last();
+  assert.deepStrictEqual([g.kind, g.status, g.robot, R('R1').mission, R('R1').target], ['guide', 'active', 'R1', g.id, 'T07']);
+  assert.strictEqual(g.label, `#${g.id} Dẫn khách tới Bàn 07`);
+  // slow mode: one cmd per change, the simulator drives at half speed
+  const H = d => O.handle(st, site, { source: 'ui', data: { by: 'Khách', type: 'speed', robot: 'R1', ...d } }, now);
+  run(1);
+  let r = H({ slow: true });
+  assert.deepStrictEqual(r.cmds, [{ cmd: 'speed', robot: 'R1', factor: 0.5 }]);
+  for (const cmd of r.cmds) S.handle(sim, site, cmd, now);
+  assert.strictEqual(R('R1').slow, true);
+  assert.deepStrictEqual(H({ slow: true }).cmds, [], 'no change, no cmd');
+  const rem0 = R('R1').rem; run(2);
+  const slowStep = rem0 - R('R1').rem;
+  assert.ok(slowStep > 0 && slowStep <= site.sim.speed * 2 * 0.5 + 0.01, `half speed: moved ${slowStep}`);
+  r = H({ slow: false });
+  assert.deepStrictEqual(r.cmds, [{ cmd: 'speed', robot: 'R1', factor: 1 }]);
+  for (const cmd of r.cmds) S.handle(sim, site, cmd, now);
+  until('T07', atStop('R1', 'guide', 'T07'));
+  confirm('R1');
+  assert.strictEqual(M(g.id).status, 'done');
+  assert.strictEqual(st.kpi.guides, 1);
+  until('dock', () => R('R1').phase === 'idle' && R('R1').at === 'D1');
+  assert.deepStrictEqual(O.handle(st, site, { source: 'ui', data: { type: 'speed', robot: 'R1', slow: true } }, now).cmds, [], 'no mission: speed ignored');
+});
+
+scenario('dẫn khách: không ai xác nhận -> nhắc, quá giờ robot tự về, không tính timeout giao món', () => {
+  send({ type: 'create', kind: 'summon', to: 'bar', robot: 'R2' });
+  until('standby', atStop('R2', 'standby', 'bar'));
+  send({ type: 'create', kind: 'guide', to: 'T01', robot: 'R2' });
+  const g = last();
+  pump({ source: 'ui', data: { type: 'speed', robot: 'R2', slow: true } });
+  until('T01', atStop('R2', 'guide', 'T01'));
+  run(site.timing.handoffSec + 1);
+  assert.ok(events.some(e => e.robotSound === 'remind' && e.robot === 'R2'));
+  assert.strictEqual(M(g.id).status, 'timeout');
+  assert.strictEqual(st.kpi.timeout, 0);
+  assert.strictEqual(R('R2').slow, false, 'slow mode ends with the mission');
+  assert.strictEqual(sim.robots.R2.factor, 1);
+  assert.strictEqual(R('R2').phase, 'toDock');
+});
+
+{
+  const off = JSON.parse(JSON.stringify(site)); off.features.guide = false;
+  const st9 = O.init(off, now);
+  st9.robots.R1.phase = 'atStop'; st9.robots.R1.at = 'kitchen';
+  O.handle(st9, off, { source: 'ui', data: { by: 't', type: 'create', kind: 'summon', to: 'kitchen', robot: 'R1' } }, now);
+  st9.robots.R1.phase = 'atStop';
+  O.handle(st9, off, { source: 'ui', data: { by: 't', type: 'create', kind: 'guide', to: 'T07', robot: 'R1' } }, now);
+  assert.ok(!st9.missions.some(m => m.kind === 'guide'), 'feature off: no guide');
+  console.log('✓ guide refused when features.guide is off');
+}
+
+// ---- Phase 2 Task 7: order food on the robot ----
+scenario('gọi món 2 danh mục -> mỗi trạm một cảnh báo, chỉ món của trạm đó', () => {
+  events = [];
+  send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 2 }, { id: 'trada', qty: 2 }, { id: 'goicuon', qty: 1 }], by: 'Khách Bàn 05' });
+  assert.strictEqual(st.orders.length, 1);
+  const o = st.orders[0];
+  assert.deepStrictEqual([o.table, o.total, o.status], ['T05', 2 * 65000 + 2 * 5000 + 45000, 'new']);
+  assert.deepStrictEqual(o.items, [{ id: 'pho', qty: 2, price: 65000 }, { id: 'trada', qty: 2, price: 5000 }, { id: 'goicuon', qty: 1, price: 45000 }]);
+  const k = st.alerts.find(a => a.key === `order-${o.id}-kitchen`), b = st.alerts.find(a => a.key === `order-${o.id}-bar`);
+  assert.strictEqual(k.text, 'Bàn 05 gọi món: Phở bò ×2, Gỏi cuốn ×1 · 175.000đ');
+  assert.strictEqual(b.text, 'Bàn 05 gọi món: Trà đá ×2 · 10.000đ');
+  assert.deepStrictEqual(events.filter(e => e.stationSound === 'ding').map(e => e.point).sort(), ['bar', 'kitchen']);
+  const snap = JSON.parse(O.handle(st, site, { source: 'ui', data: { type: 'hello' }, session: 'S' }, now).ui.find(u => JSON.parse(u.payload).type === 'state').payload);
+  assert.strictEqual(snap.orders.length, 1);
+  for (const bad of [[{ id: 'nope', qty: 1 }], [{ id: 'pho', qty: 0 }], [{ id: 'pho', qty: 21 }], [], 'pho'])
+    send({ type: 'order', table: 'T05', items: bad });
+  send({ type: 'order', table: 'kitchen', items: [{ id: 'pho', qty: 1 }] });
+  assert.strictEqual(st.orders.length, 1, 'invalid orders ignored');
+  now += 24 * 3600 * 1000 + 1000;
+  run(1);
+  assert.strictEqual(st.orders.length, 1, 'open order kept past 24 h (only a closed bill closes it)');
+});
+
+{
+  const off = JSON.parse(JSON.stringify(site)); off.features.order = false;
+  const st10 = O.init(off, now);
+  const r10 = O.handle(st10, off, { source: 'ui', data: { by: 'Khách', type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }] } }, now);
+  assert.deepStrictEqual([st10.orders.length, st10.alerts.length, JSON.parse(r10.ui[0].payload).code], [0, 0, 'disabled']);
+  console.log('✓ order refused when features.order is off');
+}
+
+// ---- Phase 2 Task 8: pay on the robot ----
+scenario('màn thanh toán cũ báo đã chuyển khoản -> yêu cầu tải lại, đơn giữ nguyên, không cảnh báo', () => {
+  send({ type: 'order', table: 'T07', items: [{ id: 'pho', qty: 1 }, { id: 'cafe', qty: 2 }] });
+  send({ type: 'order', table: 'T08', items: [{ id: 'bia', qty: 1 }] });
+  events = [];
+  send({ type: 'call', point: 'T07', what: 'paid', amount: 65000 + 2 * 29000 });
+  assert.deepStrictEqual(st.orders.map(o => [o.table, o.status]), [['T07', 'new'], ['T08', 'new']]);
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T07'));
+  assert.deepStrictEqual(events.filter(e => e.reply).map(e => [e.ok, e.code]), [[false, 'reload']]);
+  send({ type: 'call', point: 'T03', what: 'paid' });   // nothing ordered on the robot: same answer
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T03'));
+  assert.deepStrictEqual(st.orders.map(o => o.status), ['new', 'new']);
+});
+
+// ---- Final review fixes ----
+scenario('review: cảnh báo khách không đẩy mất cảnh báo dừng khẩn cấp', () => {
+  send({ type: 'estop', robot: 'R1' });
+  for (let i = 0; i < 25; i++) send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }, { id: 'trada', qty: 1 }] });
+  assert.ok(st.alerts.some(a => a.key === 'es-R1'), 'e-stop alert kept');
+  assert.ok(st.alerts.length <= 20);
+});
+
+scenario('review: 20 cảnh báo lỗi -> cảnh báo khách mới bị bỏ, không xoá lỗi', () => {
+  for (let i = 0; i < 20; i++) pump({ source: 'adapter', data: { event: 'alert', key: 'err-' + i, level: 'error', text: 'lỗi ' + i } });
+  send({ type: 'call', point: 'T05', what: 'staff' });
+  assert.deepStrictEqual(st.alerts.map(a => a.key).sort(), Array.from({ length: 20 }, (_, i) => 'err-' + i).sort());
+});
+
+scenario('review: Đã biết hoá đơn / chuyển khoản -> chỉ nhận yêu cầu, giữ đơn', () => {
+  send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }] });
+  send({ type: 'order', table: 'T06', items: [{ id: 'pho', qty: 1 }] });
+  send({ type: 'call', point: 'T05', what: 'bill' });
+  send({ type: 'ack', alert: st.alerts.find(a => a.key === 'call-bill-T05').id });
+  assert.deepStrictEqual(st.orders.map(o => o.table), ['T05', 'T06'], 'ack never closes orders');
+  assert.ok(!st.alerts.some(a => a.key === 'call-bill-T05'));
+  send({ type: 'call', point: 'T06', what: 'paid', amount: 65000 });   // refused (reload): no alert to ack, orders untouched
+  assert.ok(!st.alerts.some(a => a.key === 'call-paid-T06'));
+  assert.deepStrictEqual(st.orders.map(o => [o.table, o.status]), [['T05', 'new'], ['T06', 'new']]);
+});
+
+scenario('ack bill/paid never settles or deletes orders', () => {
+  for (const what of ['bill', 'paid']) {
+    st.orders = [{ id: 900, table: 'T05', status: 'paid-claimed', items: [], total: 1000, t: now }];
+    st.alerts = [{ id: 901, key: `call-${what}-T05`, level: 'warn', text: 'test' }];
+    const before = JSON.stringify(st.orders);
+    send({ type: 'ack', alert: 901 });
+    assert.strictEqual(JSON.stringify(st.orders), before);
+    assert.strictEqual(st.alerts.length, 0);
+  }
+});
+
+scenario('review: khách huỷ món sau khi bếp đã đổi bàn -> không huỷ nhầm bàn mới', () => {
+  send({ type: 'create', kind: 'deliver', from: 'kitchen', tables: ['T05'], robot: 'R1' });
+  const id = last().id;
+  send({ type: 'retarget', mission: id, stop: 1, to: 'T07' });
+  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer', table: 'T05' });
+  assert.strictEqual(M(id).stops[1].status, 'pending');
+  send({ type: 'cancelStop', mission: id, stop: 1, why: 'customer', table: 'T07' });
+  assert.strictEqual(M(id).status, 'cancelled');
+});
 
 console.log('OK — all scenarios pass');

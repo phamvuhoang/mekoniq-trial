@@ -57,7 +57,7 @@ connect(m => {
     group('Máy trạm nhân viên', S.roles.map(r => card(`station.html?role=${encodeURIComponent(r.id)}`, 'Nhân viên', r.name, DESC[r.id] || 'Máy trạm theo vai trò')).join('')
       + card('station.html?role=ql&view=mon', 'Quản lý', 'Giám sát & sơ đồ', 'Sơ đồ nhà hàng, robot, cảnh báo và nhật ký')) +
     group('Màn hình trên robot', S.robots.map(r => card(`robot.html?robot=${encodeURIComponent(r.id)}`, 'Khách & nhân viên', 'Robot ' + r.id, 'Tablet gắn trên robot')).join('')) +
-    group('Khách hàng', (t0 ? card(`table.html?t=${encodeURIComponent(t0)}`, 'Khách hàng · QR tại bàn', pname(t0) + ' · Theo dõi món', 'Trang khách quét QR: xem tiến độ, huỷ món') : '')
+    group('Khách hàng', (t0 ? card(`table.html?t=${encodeURIComponent(t0)}`, 'Khách hàng · QR tại bàn', pname(t0) + ' · Theo dõi món', 'Trang khách quét QR: xem tiến độ, báo nhầm món / cần hỗ trợ') : '')
       + `<div class="c wide"><span class="tag">Chọn số bàn</span><div class="tgrid">${tables.map(t => `<a href="table.html?t=${encodeURIComponent(t)}" target="_blank">${esc(short(t))}</a>`).join('')}</div></div>`) +
     // Cấu hình is needed on real (Valetudo) sites too; only the route designer needs the simulator.
     group('Cấu hình', card('setup.html', 'Quản lý', 'Cấu hình', 'Bàn, trạm, điểm dừng, vai trò, thời gian, sao lưu')

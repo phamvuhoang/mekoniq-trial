@@ -199,7 +199,7 @@ Tất cả gắn sau cờ `site.features = { order, guide, pay, call }` (mặc �
 
 ### 6.4 Thanh toán tại robot (`features.pay`)
 - `site.payment = { bank, account, name, vietqrTemplate }`; hoá đơn = `st.orders` của bàn trong ca chưa `paid` (hoặc chưa có order → ẩn nút). Màn Pay: thẻ hoá đơn (món, ×n, tiền, tổng), QR: ảnh `https://img.vietqr.io/image/{bank}-{account}-compact2.png?amount={total}&addInfo=Ban05` khi có Internet; không có → vẽ QR tĩnh của tài khoản (ảnh `site.payment.qr` tải lên ở Setup → data URL) + số tiền chữ to. Rail: `Tôi đã chuyển khoản` → `call what:'paid'` (6.1) và đánh dấu orders `status:'paid-claimed'`; `Tiền mặt / thẻ · call staff` → `call what:'staff'`.
-- Setup tab mới? → **không**: thêm thẻ "Thanh toán" vào tab Vai trò & thời gian (bank/account/name) và thẻ "Thực đơn" (nhập JSON menu hoặc bảng đơn giản) — bảng đơn giản: dòng = id · tên VI · EN · giá · danh mục; `+ Thêm món`.
+- Setup tab mới? → ~~không~~ **có (đã quyết khi review GĐ2)**: tab Vai trò đã kín màn 1280×800 mà không được cuộn trang, nên thêm tab **"Khách hàng"** chứa bật/tắt tính năng, thẻ "Thanh toán" (bank/account/name, ảnh QR tĩnh) và thẻ "Thực đơn" (nhập JSON menu hoặc bảng đơn giản) — bảng đơn giản: dòng = id · tên VI · EN · giá · danh mục; `+ Thêm món`.
 
 ### 6.5 Trang QR song ngữ
 - `table.html` toggle VI/EN lưu `localStorage`, từ điển `T` như bản vẽ; các chuỗi trạng thái hiện tại chuyển vào từ điển. Không đụng server.
