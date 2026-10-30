@@ -398,6 +398,108 @@ async function scenario(name, fn, edit = () => {}) {
       s.robots[1] = { ...s.robots[1], driver: "valetudo", valetudo: { topic: "smoke/guide", points: { kitchen: { x: 2000, y: 1000 }, T05: { x: 3000, y: 1400 } } } };
     });
 
+    await scenario("each preset, applied and saved, stores exactly its row of spec §4.2; menu, notes, bank and points stay", async (context) => {
+      const page = await open(context, "setup.html?tab=features");
+      const rest = () => JSON.stringify([App.site.menu, App.site.notes, App.site.payment, App.site.points, App.site.robots, App.site.service]);
+      const keep = await page.evaluate(rest);
+      const rows = { "table-service": [true, true], "counter-prepaid": [false, false], buffet: [true, false], custom: [false, false] };   // [callStaff, requestBill]
+      for (const [name, [callStaff, requestBill]] of Object.entries(rows)) {
+        await page.selectOption("#preset", name);
+        await page.locator("#applyPreset").click();
+        await save(page);
+        assert.deepEqual(await page.evaluate(() => [App.site.serviceProfile, App.site.features, App.site.customerCancel]),
+          [name, { callStaff, requestBill, guide: false, order: false, pay: false, busRobot: false }, "request"], name);
+        assert.equal(await page.evaluate(rest), keep, name + " changed more than the feature policy");
+      }
+    }, (s) => { Object.assign(s.features, { guide: true, order: true, pay: true, busRobot: true }); s.customerCancel = "direct"; s.service.requestStation = "bar"; });
+
+    await scenario("each flag alone shows only its own controls on the QR page and both robot screens; call off keeps the open alert; bus off mid-trip finishes", async (context) => {
+      const st = await app(context, "station.html?role=bep&name=Smoke");
+      const r1 = await app(context, "robot.html?robot=R1"), r2 = await app(context, "robot.html?robot=R2"), qr = await app(context, "table.html?t=T05");
+      for (const p of [r1, r2]) await p.locator("#start").click();
+      await summon(st, "R1", "T05");
+      await summon(st, "R2", "bar");
+      await st.evaluate(() => send({ type: "billPrepare", table: "T05", orderIds: [], total: 0, note: "Smoke", requestId: "smoke-flags-bill", by: "Smoke" }));
+      await st.waitForFunction(() => App.state.bills.some((b) => b.table === "T05"));
+      for (const p of [r1, r2]) await p.evaluate(() => { window.controls = () => [...document.querySelectorAll('[data-mode], [data-act="guide"], [data-act="order"], [data-act="pay"], [data-act="toDish"], [data-act="call"]')].map((b) => (b.dataset.mode ? "mode:" + b.dataset.mode : b.dataset.act)); });
+      await qr.evaluate(() => { window.controls = () => [...document.querySelectorAll("[data-call]")].map((b) => b.dataset.call); });
+      const want = {   // [QR page at T05, R1 on standby at T05, R2 on standby at the bar]
+        none: [[], [], ["mode:deliver"]],
+        callStaff: [["staff"], [], ["mode:deliver"]],
+        requestBill: [["bill"], [], ["mode:deliver"]],
+        guide: [[], [], ["mode:deliver", "guide"]],
+        order: [[], ["order"], ["mode:deliver", "order"]],
+        pay: [[], ["pay"], ["mode:deliver"]],
+        busRobot: [[], ["toDish"], ["mode:deliver", "mode:bus", "toDish"]],
+      };
+      for (const [flag, shown] of Object.entries(want)) {
+        if (flag !== "none") await push(context, (s) => { for (const k of Object.keys(s.features)) s.features[k] = k === flag; });
+        for (const [i, p] of [qr, r1, r2].entries())
+          await p.waitForFunction((w) => JSON.stringify(controls()) === w, JSON.stringify(shown[i]), { timeout: 5000 })
+            .catch(async () => assert.deepEqual(await p.evaluate(() => controls()), shown[i], `${flag}: ${["QR", "R1", "R2"][i]}`));
+        if (flag === "callStaff") {   // a request accepted now must outlive the flag
+          await qr.locator('[data-call="staff"]').click();
+          await st.waitForFunction(() => App.state.alerts.some((a) => a.key === "call-staff-T05"));
+        }
+        if (flag === "requestBill") assert(await st.evaluate(() => App.state.alerts.some((a) => a.key === "call-staff-T05")), "callStaff off dropped the open alert");
+      }
+      await st.evaluate(() => send({ type: "ack", alert: App.state.alerts.find((a) => a.key === "call-staff-T05").id, by: "Smoke" }));
+      await st.waitForFunction(() => !App.state.alerts.some((a) => a.key === "call-staff-T05"));
+      assert.deepEqual(await st.evaluate(() => App.state.bills.map((b) => [b.table, b.status])), [["T05", "prepared"]]);   // ack touches the alert only
+
+      // Bus trip started from the robot screen, then busRobot off: the trip still unloads; the station still sends a new one.
+      await r1.locator('[data-act="toDish"]').click();
+      await r1.waitForFunction(() => { const r = App.state.robots.find((x) => x.id === "R1"); return r.phase === "toStop" && missionOf(r).kind === "bus"; });
+      await push(context, (s) => { s.features.busRobot = false; });
+      await r1.waitForFunction(() => !feat("busRobot"));
+      await r1.waitForFunction(() => { const r = App.state.robots.find((x) => x.id === "R1"); return r.phase === "atStop" && r.at === App.site.dishPoint; }, null, { timeout: 60000 });
+      await r1.locator('[data-act="confirm"]').click();
+      await r1.waitForFunction(() => App.state.history.some((m) => m.kind === "bus" && m.robot === "R1" && m.status === "done"));
+      await st.evaluate(() => send({ type: "create", kind: "bus", table: "T06", robot: "any", by: "Smoke" }));
+      await st.waitForFunction(() => App.state.missions.some((m) => m.kind === "bus" && m.stops[0].p === "T06"));
+    }, (s) => { s.service.requestStation = "bar"; });
+
+    await scenario("QR guest in English at 390 px with custom chips: a call lost in a disconnect is resent once on reconnect; direct → request swaps the button and refuses an old cancel", async (context) => {
+      const st = await app(context, "station.html?role=bep&name=Smoke");
+      await st.locator('[data-f="t:T01"]').click();
+      assert.deepEqual(await st.locator("#pvOpts .notes .chip").allInnerTexts(), ["Ít đá", "Không đường"]);
+      await st.locator('#pvSend [data-act="unpick"]').click();
+      await st.evaluate(() => send({ type: "create", kind: "deliver", from: "kitchen", tables: ["T05"], robot: "R1", by: "Smoke" }));
+      const guest = await app(context, "table.html?t=T05");
+      await guest.setViewportSize({ width: 390, height: 844 });
+      await guest.locator('[data-lang="en"]').click();
+      await guest.reload();   // the choice is remembered on this phone
+      await guest.waitForFunction(() => App.site && App.state && document.querySelector('[data-act="cancelStop"]'));
+      assert.deepEqual(await guest.evaluate(() => [document.documentElement.lang, [...document.querySelectorAll("[data-call]")].map((b) => b.textContent), document.querySelector('[data-act="cancelStop"]').textContent]),
+        ["en", ["Call staff", "Request the bill"], "Send this item back"]);
+      await expectText(guest, "#help", "not a refund");
+      assert(await guest.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "QR page scrolls sideways at 390 px");
+      if (process.env.SMOKE_SHOTS) await guest.screenshot({ path: `${process.env.SMOKE_SHOTS}/table-en-390.png`, fullPage: true });
+
+      // The call leaves while the socket drops: same requestId resent on reconnect, one alert, one toast; the late original replays.
+      await spyToasts(guest);
+      await hold(guest, "call");
+      await guest.locator('[data-call="staff"]').click();
+      await expectText(guest, '[data-call="staff"]', "Sending…");
+      await guest.evaluate(() => { send = realSend; Transport.ws.close(); });
+      await guest.waitForFunction(() => toasts.length, null, { timeout: 15000 });
+      await st.waitForFunction(() => App.state.alerts.some((a) => a.key === "call-staff-T05"));
+      await guest.evaluate(() => realSend(held[0]));
+      await guest.waitForTimeout(500);
+      assert.deepEqual(await guest.evaluate(() => toasts), ["Staff called — please wait"]);
+      assert.equal(await st.evaluate(() => App.state.alerts.filter((a) => a.key === "call-staff-T05").length), 1);
+
+      // direct → request mid-trip: the armed cancel becomes the report button; a cached old page's cancel is refused, the trip goes on.
+      await guest.locator('[data-act="cancelStop"]').click();
+      await expectText(guest, '[data-act="cancelStop"]', "Tap again");
+      await push(context, (s) => { s.customerCancel = "request"; });
+      await guest.waitForFunction(() => !document.querySelector('[data-act="cancelStop"]') && /Wrong item \/ Need help/.test(document.querySelector('[data-act="returnRequest"]').textContent));
+      await spyReplies(guest);
+      await guest.evaluate(() => send({ type: "cancelStop", mission: App.state.missions[0].id, stop: 1, table: "T05", why: "customer", requestId: "smoke-old-cancel", by: "Khách" }));
+      await guest.waitForFunction(() => replies.length);
+      assert.deepEqual(await guest.evaluate(() => [replies[0].ok, replies[0].code, ["pending", "active"].includes(App.state.missions[0].stops[1].status)]), [false, "policy", true]);
+    }, (s) => { Object.assign(s.features, { callStaff: true, requestBill: true }); s.service.requestStation = "bar"; s.customerCancel = "direct"; s.notes = ["Ít đá", "Không đường"]; });
+
     await scenario("billing: staff prepare → robot QR of the bill total → guest claim → ack keeps orders → settle → close once the table is clear", async (context) => {
       await context.route(/img\.vietqr\.io/, (r) => r.fulfill({ contentType: "image/png", body: PNG }));
       const st = await app(context, "station.html?role=bep&name=Smoke"), robot = await app(context, "robot.html?robot=R1");

@@ -213,6 +213,39 @@ test('open orders and bills outlive days; closed ones leave 30 days after closin
   assert.deepEqual([h.st.orders, h.st.bills], [[], []]);
 });
 
+// Node-RED keeps st in its localfilesystem context: after a restart the orchestrator gets the JSON copy back.
+const restart = h => { const s = JSON.parse(JSON.stringify(h.st)); for (const k of Object.keys(h.st)) delete h.st[k]; Object.assign(h.st, s); };
+test('restart after prepare, claim, settle and close: the bill goes on, retries of the same requestIds replay', () => {
+  const h = v2();
+  h.send({type: 'order', table: 'T01', items: [{id: 'pho', qty: 2}], requestId: 'o'});
+  const total = h.st.orders[0].total;
+  h.send({type: 'call', point: 'T01', what: 'bill', requestId: 'call'});
+  h.send({type: 'ack', alert: alertOf(h, 'call-bill-T01').id});
+  const steps = [
+    {type: 'billPrepare', table: 'T01', orderIds: [1], total, requestId: 'p'},
+    {type: 'billClaim', bill: 1, rev: 1, requestId: 'c'},
+    {type: 'billSettle', bill: 1, rev: 2, method: 'transfer', requestId: 's'},
+    {type: 'billClose', bill: 1, rev: 3, requestId: 'x'},
+  ];
+  for (const [i, cmd] of steps.entries()) {
+    h.send(cmd);
+    assert.equal(reply(h).ok, true, cmd.type);
+    const before = JSON.stringify([h.st.bills, h.st.orders, h.st.alerts, h.st.log]);
+    restart(h);
+    h.send(cmd);   // the reply was lost: the client retries after reconnecting
+    const rep = reply(h);
+    assert.deepEqual([rep.ok, rep.duplicate, rep.bill.id, rep.bill.rev], [true, true, 1, i + 1], cmd.type);
+    assert.equal(JSON.stringify([h.st.bills, h.st.orders, h.st.alerts, h.st.log]), before, cmd.type + ': the retry changed state');
+    h.send({type: 'call', point: 'T01', what: 'bill', requestId: 'call'});   // the guest's 24 h receipt survives too
+    assert.deepEqual([reply(h).duplicate, !!alertOf(h, 'call-bill-T01')], [true, false]);
+  }
+  assert.deepEqual([h.st.bills.length, h.st.bills[0].status, h.st.orders[0].status], [1, 'closed', 'closed']);
+  restart(h);   // the next party: a new bill number, never one reused
+  h.send({type: 'order', table: 'T01', items: [{id: 'pho', qty: 1}], requestId: 'o2'});
+  h.send({type: 'billPrepare', table: 'T01', orderIds: [2], total: h.st.orders[1].total, requestId: 'p2'});
+  assert.deepEqual([reply(h).bill.id, h.st.billSeq], [2, 2]);
+});
+
 // ---- Task 5: gates for requests, cancellation, bus and capability (spec §3, §5, §6, §9) ----
 const events = r => msgs(r).filter(p => p.type === 'event');
 const dings = r => events(r).filter(e => e.stationSound === 'ding');
