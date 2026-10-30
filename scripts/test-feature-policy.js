@@ -126,7 +126,7 @@ test('custom unknown fields are kept through migrate and normalize', () => {
 });
 test('capabilities: only simulator robots control speed', () => {
   assert.deepEqual(Policy.capabilities({id: 'R1'}), {speedControl: true});
-  assert.equal(Policy.capabilities({driver: 'simulator'}).speedControl, true);
+  assert.equal(Policy.capabilities({driver: 'sim'}).speedControl, true);
   assert.equal(Policy.capabilities({driver: 'valetudo'}).speedControl, false);
   assert.equal(Policy.capabilities({driver: 'newbot'}).speedControl, false);
   for (const r of [null, undefined, 'R1', 1]) assert.equal(Policy.capabilities(r).speedControl, false);

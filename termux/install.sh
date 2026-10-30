@@ -27,12 +27,14 @@ fi
 command -v mosquitto >/dev/null || pkg install -y -o Dpkg::Options::=--force-confnew mosquitto
 
 mkdir -p "$APP"
-# The live config (points, robots, roles) is kept by Node-RED in $APP/context/ (edited on setup.html) and is not
-# in the bundle, so reinstalling never loses it. data/site.json in the bundle is only the empty seed.
-# Upgrade from the version that kept the config in site.json: keep that file so it can be imported on setup.html.
-if [ -f "$APP/site.json" ] && grep -q '"driver"' "$APP/site.json" && [ ! -f "$APP/context/global/global.json" ]; then
-  cp "$APP/site.json" "$APP/site.json.old" && OLD_SITE=1
+# Preserve the effective old seed if setup.html was never saved. Run only after Node-RED exits;
+# a closed HTTP port alone does not mean its final context flush has finished.
+for i in $(seq 30); do pgrep -f 'node-red|start-nodered' >/dev/null || break; sleep 1; done
+if pgrep -f 'node-red|start-nodered' >/dev/null; then
+  echo "Node-RED chưa thoát hẳn — dừng tiến trình trước khi cài lại." >&2
+  exit 1
 fi
+node "$HERE/scripts/preserve-site.js" "$APP"
 cp -r "$HERE/data/." "$APP/"
 # MQTT: the robot connects over the Wi-Fi on :1883 with a password (anyone on the Wi-Fi could drive it otherwise);
 # Node-RED uses an on-device-only listener on :1884 without login. Password made once, kept across reinstalls.
@@ -102,5 +104,4 @@ MQTT broker cho Valetudo : $IP:1883  user: $MQTT_USER  pass: $MQTT_PW  (xem lạ
 Đặt IP cố định cho máy này trên router (DHCP reservation) trước khi khai vào Valetudo.
 Cấu hình robot Valetudo: ~/bundle/docs/valetudo-setup.md
 MSG
-[ -n "$OLD_SITE" ] && echo "⚠️ Cấu hình cũ đã lưu ở ~/robot/site.json.old — mở http://$IP:$P/setup.html → Sao lưu → Nhập JSON (chép tệp sang Downloads trước: termux-setup-storage; cp ~/robot/site.json.old ~/storage/downloads/) → Lưu"
 true

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/test.js && node scripts/test-valetudo.js && node scripts/test-site.js && node scripts/test-feature-policy.js && node scripts/test-billing.js && node scripts/test-guest-policy.js && node scripts/test-health.js && node scripts/test-review.js",
+    "test": "node scripts/test.js && node scripts/test-valetudo.js && node scripts/test-site.js && node scripts/test-feature-policy.js && node scripts/test-billing.js && node scripts/test-guest-policy.js && node scripts/test-health.js && node scripts/test-review.js && node scripts/test-review-followup.js",
     "start": "node-red -u data -s data/settings.js",
     "pack": "sh scripts/pack.sh",
     "smoke": "node scripts/smoke-test.js",

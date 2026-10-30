@@ -82,5 +82,15 @@ Spec: [restaurant feature policy](superpowers/specs/2026-10-30-restaurant-featur
 
 ### Ghi nhận, không sửa trong đợt này
 
-- Nút "↺ Khởi động lại demo" (tab Mô phỏng của trạm, hiện khi có robot simulator) gửi `reset`: xoá toàn bộ state, kể cả đơn/phiếu đang mở; server nhận `reset` từ mọi client. Đây là thao tác hai chạm có chủ ý từ trước, không phải cleanup tự động. Cần quyết định sản phẩm nếu vận hành thật với fleet có robot simulator.
+- Reset demo bị từ chối khi còn phiếu mở và hiện lý do ở trang hub. Khi được chấp nhận, giữ số đơn/phiếu, đơn đã đóng, lịch sử phiếu và receipt chống gửi lặp còn trong 24 giờ; nhiệm vụ và đơn chưa đóng bị xoá theo thao tác reset có chủ ý.
 - Ô tổng của trạm hiểu "1,5" là 15đ. Nút hiện "Chuẩn bị phiếu · 15đ" trước khi gửi, và tổng khác tổng tham khảo bắt buộc ghi chú (minor đã ghi ở Task 8).
+
+
+### Hồi quy sau review cuối (2026-10-30)
+
+- `npm test` bao gồm `scripts/test-review-followup.js`: giỏ mới / gửi lại / phản hồi muộn, quá 1.000 request, receipt qua reset, đường đóng/một chiều và điểm xuất phát riêng của robot.
+- Test installer thực thi bước bảo toàn cấu hình + chép seed trên thư mục tạm: site chưa lưu giữ hành vi, site đã lưu không bị ghi đè, cài mới giữ mặc định v2 và context lỗi ngăn nâng cấp. Không chạy installer thật trên máy phát triển.
+- `scripts/smoke-review-fixes.js` dùng Chromium với server web ở 1892: gửi hai giỏ giống nhau từ tab robot giữ vai trò engine; bấm nút reset thật ở hub khi còn phiếu mở và kiểm tra thông báo cùng dữ liệu giữ nguyên.
+- Busy-close tiếp tục chặn chuyến tới thu chén; standby không chặn, theo quy tắc hiện tại.
+
+Kết quả chạy lại sau bản sửa: `npm test` đạt (13 test hồi quy mới); smoke-review 7/7, smoke-browser 6/6, smoke-feature-policy 18/18, smoke-web 3/3, smoke-review-fixes 2/2 và smoke-test giao Bếp → T01 trọn vòng đều đạt. 38/38 file export khớp byte; `npm run pack` đạt, gói chứa script bảo toàn cấu hình. Review độc lập không còn lỗi chặn. Các giới hạn kiểm thử thiết bị thật và quét VietQR ở trên vẫn áp dụng.

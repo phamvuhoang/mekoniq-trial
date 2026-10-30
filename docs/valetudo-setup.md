@@ -17,7 +17,7 @@ Robot vào cổng 1883 **có mật khẩu** (không có thì ai cùng Wi-Fi nhà
 Mật khẩu tạo một lần, giữ qua các lần cài lại: `cat ~/robot/.mqtt-pass`.
 Đặt **IP cố định** cho điện thoại trên router (DHCP reservation) trước bước 1 — Valetudo lưu IP này, đổi IP là robot mất kết nối.
 Cấu hình (bàn, trạm, điểm dừng, topic, núm chỉnh) nằm trong `~/robot/context/` của Node-RED, **cài lại không mất**.
-Nâng cấp bản đã có tính tiền / cấu hình version 2: làm theo **2d** (sao lưu context trước khi cài). Nâng cấp từ bản rất cũ (cấu hình trong `site.json`): script giữ lại `~/robot/site.json.old`; chép sang Downloads (`termux-setup-storage` rồi `cp ~/robot/site.json.old ~/storage/downloads/`) → setup.html → Sao lưu → **Nhập JSON** → Lưu. Toạ độ cũ tự chuyển vào robot R1. Trước khi cài lại nên bấm **Tải xuống JSON** trong trang Cấu hình để có bản sao.
+Nâng cấp bản đã có tính tiền / cấu hình version 2: làm theo **2d** (sao lưu context trước khi cài). Nâng cấp từ bản cấu hình trong `site.json`: installer giữ cấu hình đó trong context trước khi thay seed, đồng thời sao lưu thành `~/robot/site.json.old`. Nếu file quá cũ không có danh sách robots, installer dừng để tránh ghi đè: sao lưu file rồi Nhập JSON và Lưu bằng bản đang chạy trước khi nâng cấp. Trước khi cài lại nên bấm **Tải xuống JSON** trong trang Cấu hình để có bản sao.
 
 ## 1. Valetudo → MQTT
 
@@ -92,7 +92,9 @@ Phiếu sai và chưa thu: **Vô hiệu hóa phiếu** (cần lý do, đơn gi�
 - Cấu hình lưu từ bản này là **version 2** (`featurePolicyVersion: 2`); file **Tải xuống JSON** cũng là version 2.
 - Cấu hình cũ (lưu bởi bản trước) chạy ngay khi khởi động, hiểu như hành vi cũ và **không tự bật thêm gì**: *Gọi nhân viên* và *Yêu cầu tính tiền* theo ô gọi nhân viên cũ; dẫn khách, gọi món, thanh toán giữ nguyên; thu dọn từ robot bật; khách tự gửi trả; trạm nhận = trạm đầu tiên. Bản này không tự ghi đè: tab Tính năng báo "Cấu hình cũ…" → kiểm tra **Trạm nhận yêu cầu** → **Lưu** một lần để ghi version 2. Nhập file JSON cũ cũng được chuyển sang version 2 trước khi Lưu.
 - Sau khi đã lưu version 2, trang Cấu hình cũ còn trong cache của tablet bị từ chối lưu ("trang cấu hình đã cũ — tải lại trang"): tải lại trang.
-- Máy **chưa từng lưu cấu hình** (đang chạy dữ liệu mặc định) và **Khôi phục mặc định**: dữ liệu mặc định mới tắt mọi tính năng (cả thu dọn từ robot), khách báo nhân viên, chưa có trạm nhận. Bật lại trong tab Tính năng.
+- Máy **chưa từng lưu cấu hình**: installer đợi Node-RED thoát hẳn rồi giữ `site.json` đang dùng vào context nếu chưa có `global.site`, trước khi thay file seed. Cấu hình và hành vi cũ được giữ, bản sao ở `site.json.old`; migration v2 diễn ra khi boot như trên. Context lỗi JSON làm installer dừng, không ghi đè.
+- **Cài mới** và **Khôi phục mặc định** vẫn dùng seed v2 tắt mọi tính năng (cả thu dọn từ robot), khách báo nhân viên, chưa có trạm nhận.
+- Cập nhật thủ công ngoài installer: sau khi dừng Node-RED, chạy `node <gói-mới>/scripts/preserve-site.js <thư-mục-app-cũ>` trước khi chép đè `site.json` (Mac cũng áp dụng).
 
 Nâng cấp (lõi và giao diện luôn cùng một gói, không cập nhật riêng phần nào):
 1. Cấu hình → Sao lưu → **Tải xuống JSON**. Nên đóng hoặc ghi lại các phiếu đang mở.

@@ -69,7 +69,7 @@ Mẫu chuẩn cho site mới (các trường khác của site giữ nguyên):
 
 - Config thiếu `featurePolicyVersion:2`: `callStaff` và `requestBill` kế thừa boolean của `features.call`; `guide/order/pay` giữ nguyên; `busRobot:true` và `customerCancel:'direct'` để giữ hành vi site đang dùng. Trường mới đã có giá trị hợp lệ được ưu tiên.
 - `requestStation`: giữ giá trị hợp lệ; nếu chưa có, dùng trạm đầu tiên theo thứ tự `Object.keys(points)`, hoặc `null`. UI hiện thông báo đã chuyển cấu hình cũ và yêu cầu quản lý kiểm tra trạm nhận; không tự lưu đè file.
-- Site mới dùng mẫu trên; không dùng migration để suy ra mặc định của site mới. Seed sản xuất/demo được viết rõ version 2.
+- Site mới dùng mẫu trên; không dùng migration để suy ra mặc định của site mới. Seed sản xuất/demo được viết rõ version 2. Site đang dùng nhưng chưa từng lưu cũng là site cũ: installer giữ seed đang chạy vào context trước khi thay file, sau khi Node-RED đã thoát hẳn. Không tự normalize hay tăng rev trong bước bảo toàn này.
 - Sau normalize/import/save: xuất version 2, bỏ alias `features.call`, giữ các trường không liên quan. Boolean phải là boolean thật; không coi chuỗi `"false"` là `true`.
 - `notes` thiếu/null: bộ mặc định. Mảng có chủ ý: trim, bỏ rỗng, giới hạn 8 mục × 24 ký tự; kết quả rỗng được giữ `[]`. Giá trị không phải mảng và không null bị từ chối.
 - Config cũ trên đĩa phải được hiểu đúng ngay khi boot/hello, không đợi người dùng bấm Lưu. Dùng hàm migration không đổi `rev`, `by`, `savedAt`, `saveRequestId`; migration runtime không tự persist.
