@@ -7,10 +7,13 @@ const errs = (mut) => { const s = clone(seed); mut(s); return S.normalize(s, see
 const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expected an error mentioning "${word}" in ${JSON.stringify(list)}`);
 
 {
+  // The seed is still pre-v2: normalize migrates it once, then a v2 site normalizes to itself.
   const r = S.normalize(clone(seed), seed);
   assert.deepStrictEqual(r.errors, []);
-  assert.deepStrictEqual(r.site, seed);
-  console.log('✓ seed normalizes to itself');
+  assert.deepStrictEqual(r.site, { ...seed, featurePolicyVersion: 2, serviceProfile: 'custom', customerCancel: 'direct', service: { requestStation: 'kitchen' },
+    features: { guide: false, order: false, pay: false, callStaff: false, requestBill: false, busRobot: true }, payment: { ...seed.payment, verification: 'staff' } });
+  assert.deepStrictEqual(S.normalize(clone(r.site), seed), r);
+  console.log('✓ seed migrates to v2, v2 normalizes to itself');
 }
 {
   has(errs(s => { s.points['1abc'] = { name: 'x', kind: 'table' }; }), '1abc');
@@ -59,9 +62,11 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
 {
   const st = { missions: [{ status: 'active', robot: 'R1', stops: [{ p: 'T01', status: 'active' }, { p: 'T02', status: 'done' }] },
                           { status: 'queued', robot: null, stops: [{ p: 'T03', status: 'pending' }] }],
-    robots: { R1: { mission: 1 }, R2: { mission: null } } };
+    robots: { R1: { mission: 1 }, R2: { mission: null } },
+    orders: [{ table: 'T04', status: 'new' }, { table: 'T05', status: 'closed' }, { table: 'T06', status: 'paid-claimed' }],
+    bills: [{ table: 'T07', status: 'claimed' }, { table: 'T08', status: 'closed' }, { table: 'T09', status: 'void' }] };
   const u = S.inUse(seed, st);
-  assert.deepStrictEqual([...u.points].sort(), ['T01', 'T03']);
+  assert.deepStrictEqual([...u.points].sort(), ['T01', 'T03', 'T04', 'T06', 'T07']);
   assert.deepStrictEqual([...u.robots], ['R1']);
   console.log('✓ inUse');
 }
@@ -84,11 +89,11 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   console.log('✓ migrates old site.valetudo.points');
 }
 {
-  const s = clone(seed); delete s.features;
-  assert.deepStrictEqual(S.normalize(s, seed).site.features, { call: false, guide: false, order: false, pay: false });
-  s.features = { call: 1, order: 'yes', bogus: true };
-  assert.deepStrictEqual(S.normalize(s, seed).site.features, { call: true, guide: false, order: true, pay: false });
-  console.log('✓ features default to off, coerced to booleans');
+  const s = clone(seed); delete s.features; s.featurePolicyVersion = 2;
+  assert.deepStrictEqual(S.normalize(s, seed).site.features, { callStaff: false, requestBill: false, guide: false, order: false, pay: false, busRobot: false });
+  s.features = { order: 'yes' };
+  has(S.normalize(s, seed).errors, 'order');
+  console.log('✓ v2 features default to off, non-booleans rejected');
 }
 {
   const s = clone(seed); delete s.notes;
@@ -97,8 +102,10 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   const n = S.normalize(s, seed).site.notes;
   assert.deepStrictEqual(n, ['Ít đá', 'x'.repeat(24), '42', 'a', 'b', 'c', 'd', 'e']);
   s.notes = ['', '  '];
-  assert.strictEqual(S.normalize(s, seed).site.notes.length, 4, 'all empty -> defaults');
-  console.log('✓ quick notes trimmed, capped, defaulted');
+  assert.deepStrictEqual(S.normalize(s, seed).site.notes, [], 'all empty -> no chips, on purpose');
+  s.notes = 'Ít cay';
+  has(S.normalize(s, seed).errors, 'Ghi chú');
+  console.log('✓ quick notes trimmed, capped, defaulted only when missing');
 }
 {
   const s = clone(seed); s.points.door = { name: 'Cửa đón khách', kind: 'entrance' };
@@ -134,9 +141,9 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
 }
 {
   const s = clone(seed); delete s.payment;
-  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: '', account: '', name: '' });
+  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: '', account: '', name: '', verification: 'staff' });
   s.payment = { bank: ' VCB ', account: '0123 456 789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA' };
-  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: 'VCB', account: '0123456789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA' });
+  assert.deepStrictEqual(S.normalize(s, seed).site.payment, { bank: 'VCB', account: '0123456789', name: 'Nha hang A', qr: 'data:image/png;base64,AAAA', verification: 'staff' });
   has(errs(x => { x.payment = { account: '12ab' }; }), 'account');
   has(errs(x => { x.payment = { qr: 'http://evil/x.png' }; }), 'qr');
   has(errs(x => { x.payment = { qr: 'data:image/png;base64,' + 'A'.repeat(210 * 1024) }; }), 'qr');

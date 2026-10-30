@@ -18,6 +18,7 @@ const ARRIVE_SOUND = { load: 'load', handoff: 'arrived', collect: 'collect', unl
 const SIM_FAULTS = ['block', 'clear', 'offline', 'online', 'lowbat'];
 const R = require('./route');
 const Site = require('./site');
+const Policy = require('./feature-policy');
 const WHY_VI = { object: 'vật cản', person: 'người đi qua', robot: 'robot khác' };
 const CALL_VI = { staff: 'gọi nhân viên', bill: 'xin hoá đơn', paid: 'báo đã chuyển khoản' };
 
@@ -73,7 +74,8 @@ function alert(c, key, level, text, robot) {
   }
 }
 // Phase-2 features are opt-in per site (site.features); the UI hides them too, this is the server-side gate.
-const feature = (c, f, by) => (c.site.features || {})[f] ? true : (log(c, 'warn', `${by}: tính năng "${f}" đang tắt — bỏ qua`), false);
+// Reads the v2 flags of legacy and v2 sites; 'call' = callStaff until each call.what gets its own gate.
+const feature = (c, f, by) => Policy.migrate(c.site).features[f === 'call' ? 'callStaff' : f] === true ? true : (log(c, 'warn', `${by}: tính năng "${f}" đang tắt — bỏ qua`), false);
 const resolve = (c, key) => { c.st.alerts = c.st.alerts.filter(a => a.key !== key); };
 // Client-side cues. robotSound -> robot screen, stationSound -> stations (filtered by point), table -> customer page.
 const ev = (c, e) => c.ui.push({ payload: JSON.stringify({ type: 'event', t: c.now, ...e }) });
