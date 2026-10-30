@@ -96,9 +96,10 @@ Phiếu sai và chưa thu: **Vô hiệu hóa phiếu** (cần lý do, đơn gi�
 
 Nâng cấp (lõi và giao diện luôn cùng một gói, không cập nhật riêng phần nào):
 1. Cấu hình → Sao lưu → **Tải xuống JSON**. Nên đóng hoặc ghi lại các phiếu đang mở.
-2. Dừng Node-RED rồi chép state (đơn, phiếu, robot, cấu hình):
+2. Dừng Node-RED, **đợi tiến trình thoát hẳn** (Node-RED ghi context lần cuối khi thoát) rồi mới chép state (đơn, phiếu, robot, cấu hình):
    ```sh
    pkill -f start-nodered; pkill -f node-red
+   while pgrep -f node-red >/dev/null; do sleep 1; done; sleep 2
    cp -r ~/robot/context ~/robot/context.bak-$(date +%Y%m%d-%H%M)
    ```
 3. Cài gói mới bằng lệnh ở bước **0**.
