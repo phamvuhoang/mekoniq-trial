@@ -624,15 +624,27 @@ scenario('review: 20 cảnh báo lỗi -> cảnh báo khách mới bị bỏ, kh
   assert.deepStrictEqual(st.alerts.map(a => a.key).sort(), Array.from({ length: 20 }, (_, i) => 'err-' + i).sort());
 });
 
-scenario('review: Đã biết hoá đơn / chuyển khoản -> đóng đơn của bàn', () => {
+scenario('review: Đã biết hoá đơn / chuyển khoản -> chỉ nhận yêu cầu, giữ đơn', () => {
   send({ type: 'order', table: 'T05', items: [{ id: 'pho', qty: 1 }] });
   send({ type: 'order', table: 'T06', items: [{ id: 'pho', qty: 1 }] });
   send({ type: 'call', point: 'T05', what: 'bill' });
   send({ type: 'ack', alert: st.alerts.find(a => a.key === 'call-bill-T05').id });
-  assert.deepStrictEqual(st.orders.map(o => o.table), ['T06'], 'T05 closed, next party starts clean');
+  assert.deepStrictEqual(st.orders.map(o => o.table), ['T05', 'T06'], 'ack never closes orders');
+  assert.ok(!st.alerts.some(a => a.key === 'call-bill-T05'));
   send({ type: 'call', point: 'T06', what: 'paid', amount: 65000 });
   send({ type: 'ack', alert: st.alerts.find(a => a.key === 'call-paid-T06').id });
-  assert.deepStrictEqual(st.orders, []);
+  assert.deepStrictEqual(st.orders.map(o => o.table), ['T05', 'T06']);
+});
+
+scenario('ack bill/paid never settles or deletes orders', () => {
+  for (const what of ['bill', 'paid']) {
+    st.orders = [{ id: 900, table: 'T05', status: 'paid-claimed', items: [], total: 1000, t: now }];
+    st.alerts = [{ id: 901, key: `call-${what}-T05`, level: 'warn', text: 'test' }];
+    const before = JSON.stringify(st.orders);
+    send({ type: 'ack', alert: 901 });
+    assert.strictEqual(JSON.stringify(st.orders), before);
+    assert.strictEqual(st.alerts.length, 0);
+  }
 });
 
 scenario('review: khách huỷ món sau khi bếp đã đổi bàn -> không huỷ nhầm bàn mới', () => {

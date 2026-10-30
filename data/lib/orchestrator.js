@@ -523,14 +523,7 @@ function fromUI(c, d, session, seed) {
       log(c, 'error', `${by} chuyển ${mm.label} sang xử lý thủ công`, r.id);
       return finish(c, mm, 'failed');
     }
-    case 'ack': {
-      const a = st.alerts.find(x => x.id === d.alert);
-      st.alerts = st.alerts.filter(x => x.id !== d.alert);
-      // Staff handled "xin hoá đơn" / "đã chuyển khoản": the table's party is settled, the next party starts with no bill.
-      const paid = a && /^call-(bill|paid)-(.+)$/.exec(a.key);
-      if (paid) st.orders = st.orders.filter(o => o.table !== paid[2]);
-      return;
-    }
+    case 'ack': st.alerts = st.alerts.filter(a => a.id !== d.alert); return;
     case 'siteSave': case 'siteReset': return saveSite(c, d, session, seed, by);
     case 'probe':   // setup.html: drive an idle robot to a spot to check a taught point
       if (r && !r.mission && r.phase === 'idle' && !r.halt && !r.offline && isFinite(d.x) && isFinite(d.y)) {
