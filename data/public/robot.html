@@ -114,6 +114,11 @@
   .qr { display: grid; gap: 10px; justify-items: center; text-align: center; }
   .qr img { width: 100%; max-width: 300px; border-radius: 18px; background: #fff; }
   .qr .acct { font-size: 18px; font-weight: 800; } .qr .amt { font-size: 32px; font-weight: 900; }
+  .bill .no { margin: 0 0 6px; font-size: 20px; font-weight: 900; color: var(--deep); }
+  .bill td small { display: block; font-size: 14px; color: var(--gray); }
+  .qr .paid { display: grid; gap: 4px; padding: 18px 22px; border-radius: 22px; background: var(--deep); color: #fff; }
+  .qr .paid b { font-size: 24px; font-weight: 900; color: var(--mint); } .qr .paid span { font-size: 16px; font-weight: 600; color: #cfe0db; }
+  .qr .lead { margin: 0; }
 
   /* Standby at a station: choose task, choose tables */
   .load { height: 100%; display: flex; flex-direction: column; gap: 14px; }
@@ -216,7 +221,7 @@ function face(mood, move) {
 $('startFace').innerHTML = face('happy');
 
 let guiding = false, gpick = null, gsent = null, g0 = {};   // guide: staff choosing the table; requestId on its way; longest route seen per mission (progress bar)
-let paying = false;   // pay screen open
+let paying = null;   // bill id of the open pay screen
 let ordering = false, cart = {}, ocat = null, otable = null;   // order food: open, qty per item id, category tab, table picked (robot not at one)
 let pick = [], mode = 'deliver';   // tables chosen while on standby at a station; deliver | bus (one table)
 const act = (cls, vi, en, dataAct, extra = '') => `<button class="act ${cls}" data-act="${dataAct}" ${extra}>${L(vi, en)}</button>`;
@@ -288,31 +293,39 @@ function orderView(r) {
       + act('primary', busy ? 'Đang gửi…' : n ? `Gửi bếp ${n} món` : 'Chưa chọn món', busy ? 'Sending…' : n ? 'Send to kitchen' : 'Nothing yet', 'orderSend', n && !off && !busy ? '' : 'disabled')
       + act('outline', 'Quay lại', 'Back', 'orderBack') };
 }
-// Pay at the table (spec 6.4): bill = this table's orders not yet reported paid. Independent of callStaff (F10).
-const bill = t => ((App.state && App.state.orders) || []).filter(o => o.table === t && o.status === 'new');
-const canPay = r => feat('pay') && !r.halt && !r.offline && !!hereTable(r) && bill(hereTable(r)).length > 0;
+// Pay at the table (spec §7.3, F10): only a bill staff prepared and verified. Total, lines and id come from the bill,
+// never from the orders. The open screen keeps its bill id: pay going off mid-screen still lets the guest report it (§9).
+const billAt = t => ((App.state && App.state.bills) || []).find(b => b.table === t);
+const canPay = r => feat('pay') && !r.halt && !r.offline && ['prepared', 'claimed'].includes((billAt(hereTable(r)) || {}).status);
 const payBtn = r => canPay(r) ? act('outline', 'Thanh toán', 'Pay the bill', 'pay') : '';
-function payView(r) {
-  const t = hereTable(r), orders = bill(t), M = menu(), P = App.site.payment || {};
-  const lines = {};
-  for (const o of orders) for (const i of o.items) { const l = lines[i.id] = lines[i.id] || { qty: 0, sum: 0 }; l.qty += i.qty; l.sum += i.qty * i.price; }
-  const total = orders.reduce((a, o) => a + o.total, 0), name = id => (M.items.find(i => i.id === id) || { vi: id }).vi;
-  const info2 = `Ban ${short(t)}`;
-  const qr = navigator.onLine && P.bank && P.account
-    ? `<img src="https://img.vietqr.io/image/${encodeURIComponent(P.bank)}-${encodeURIComponent(P.account)}-compact2.png?amount=${total}&addInfo=${encodeURIComponent(info2)}&accountName=${encodeURIComponent(P.name || '')}" alt="Mã VietQR">`
-    : P.qr ? `<img src="${esc(P.qr)}" alt="Mã QR chuyển khoản">` : '';
-  // Wi-Fi up but no Internet: navigator.onLine stays true, so fall back to the static QR (or hide) when vietqr.io fails.
-  const qrImg = qr.replace('<img src="https://', P.qr ? `<img data-fb="${esc(P.qr)}" onerror="this.onerror=null;this.src=this.dataset.fb" src="https://` : '<img onerror="this.remove()" src="https://');
-  return { bar: `${pname(t)} · Thanh toán`, sub: 'Pay the bill', tone: 'go',
-    body: `<div class="pay"><div class="card bill"><p class="eyebrow">Hoá đơn · Bill — ${esc(pname(t))}</p><table>
-      ${Object.entries(lines).map(([id, l]) => `<tr><td>${esc(name(id))} ×${l.qty}</td><td>${vnd(l.sum)}</td></tr>`).join('')}
-      <tr class="tot"><td>Tổng · Total</td><td>${vnd(total)}</td></tr></table></div>
-      <div class="qr">${qrImg}<div class="amt">${vnd(total)}</div>
-        <div class="acct">${P.account ? `${esc(P.bank)} · ${esc(P.account)}${P.name ? ' · ' + esc(P.name) : ''}` : 'Vui lòng thanh toán với nhân viên · Please pay staff'}</div>
-        <small class="muted">Nội dung · Note: ${esc(info2)}</small></div></div>`,
-    acts: act('primary', 'Tôi đã chuyển khoản', "I've paid", 'paid', `data-amt="${total}"`)
-      + (feat('requestBill') ? act('outline', 'Tiền mặt / thẻ', 'Cash or card · call staff', 'call', `data-p="${esc(t)}" data-w="bill"`) : '')
-      + act('outline', 'Quay lại', 'Back', 'payBack') };
+const payBill = r => !!paying && !r.halt && !r.offline && App.state.bills.find(b => b.id === paying && b.table === hereTable(r));
+function payView(b) {
+  const t = b.table, P = App.site.payment || {}, memo = `Ban ${short(t)} phieu ${b.id}`, lines = {};
+  for (const o of b.orders) for (const i of o.items) { const l = lines[i.id] ||= { vi: i.vi, en: i.en, qty: 0, sum: 0 }; l.qty += i.qty; l.sum += i.qty * (i.price || 0); }
+  // vietqr.io carries the amount; offline (or when it fails, see the error listener) the static QR / account text, never assumed to hold the amount.
+  const live = navigator.onLine && P.bank && P.account;
+  const qr = live ? `<img src="https://img.vietqr.io/image/${encodeURIComponent(P.bank)}-${encodeURIComponent(P.account)}-compact2.png?amount=${b.total}&addInfo=${encodeURIComponent(memo)}&accountName=${encodeURIComponent(P.name || '')}" alt="Mã VietQR">`
+    : P.qr ? `<img src="${esc(P.qr)}" alt="Mã QR chuyển khoản" data-static>` : '';
+  const done = (vi, en) => `<div class="paid"><b>${vi}</b><span>${en}</span></div><div class="amt">${vnd(b.total)}</div>`;
+  const side = b.status === 'settled' ? done('Đã được nhân viên xác nhận', 'Payment confirmed by staff')
+    : b.status === 'claimed' ? done('Đang chờ nhân viên xác nhận', 'Waiting for staff to confirm your transfer')
+    : !b.total ? done('Không cần chuyển khoản', 'Nothing to transfer') + '<p class="lead">Nhân viên sẽ hoàn tất tại quầy · Staff will finish this at the station</p>'
+    : `${qr}<small class="sq"${live || !P.qr ? ' hidden' : ''}>QR tĩnh không kèm số tiền — nhập đúng ${vnd(b.total)} · Static QR: enter the exact amount</small>
+      <div class="amt">${vnd(b.total)}</div>
+      <div class="acct">${P.account ? `${esc(P.bank)} · ${esc(P.account)}` : 'Vui lòng thanh toán với nhân viên · Please pay staff'}</div>
+      ${P.name ? `<small>Kiểm tra tên người nhận · Check the recipient: <b>${esc(P.name)}</b></small>` : ''}
+      <small class="muted">Nội dung · Note: ${esc(memo)}</small>`;
+  const busy = sending(q => q.type === 'billClaim' && q.bill === b.id);
+  return { bar: `${pname(t)} · Thanh toán`, sub: 'Pay the bill', tone: b.status === 'settled' ? 'ok' : 'go',
+    body: `<div class="pay"><div class="card bill"><p class="eyebrow">Phiếu tính tiền do nhân viên xác nhận · Bill confirmed by staff</p>
+      <p class="no">${esc(pname(t))} · #${b.id}</p><table>
+      ${Object.values(lines).map(l => `<tr><td>${esc(l.vi)} ×${l.qty}<small>${esc(l.en)}</small></td><td>${vnd(l.sum)}</td></tr>`).join('')}
+      ${b.total !== b.suggested || !b.orders.length ? '<tr><td>Tổng do nhân viên xác nhận<small>Total set by staff</small></td><td></td></tr>' : ''}
+      <tr class="tot"><td>Tổng · Total</td><td>${vnd(b.total)}</td></tr></table></div>
+      <div class="qr">${side}</div></div>`,
+    // A local "paid" never exists: the claimed / settled views come from state.bills.
+    acts: (b.status === 'prepared' && b.total ? act('primary', busy ? 'Đang gửi…' : 'Tôi đã chuyển khoản', busy ? 'Sending…' : 'I have transferred', 'claim', busy ? 'disabled' : '') : '')
+      + callBtn(t, 'staff', 'Gọi nhân viên', 'Call staff') + act('outline', 'Quay lại', 'Back', 'payBack') };
 }
 // Guest calls from a table (spec §6): "Gọi nhân viên" and "Yêu cầu tính tiền" have independent flags; held while on their way.
 function callBtn(t, w, vi, en) {
@@ -367,7 +380,8 @@ function view(r, m) {
       `<p class="lead">${r.why === 'person' ? 'Có người phía trước — robot chờ quý khách đi qua.' : isValetudo() ? `Có vật cản phía trước — robot sẽ thử đi tiếp sau ${retrySec()} giây.` : `Có vật cản phía trước — robot chờ ${App.site.sim.waitSec} giây rồi tìm đường vòng.`}</p>`),
     acts: act('outline', 'Nhân viên: đã dọn lối', 'Path cleared', 'clear') };
 
-  if (paying && canPay(r)) return payView(r);
+  const pb = payBill(r);
+  if (pb) return payView(pb);
   if (ordering && still(r)) return orderView(r);
   // The robot cannot tell which tables are free: staff pick the table they gave the guests, then confirm.
   if (guiding && canGuide(r, m)) return { bar: 'Dẫn khách · Nhân viên chọn bàn', sub: 'Guide · Staff picks the table', tone: 'go',
@@ -491,7 +505,7 @@ function render() {
     for (const id of gone) delete cart[id];
     if (gone.length) toast('Món không còn trong thực đơn đã được bỏ khỏi giỏ · Items no longer on the menu were removed', 'warn');
   }
-  if (!r || !canPay(r)) paying = false;
+  if (!r || !payBill(r)) paying = null;   // robot left the table, or the bill closed / was voided
   if (r && m && m.kind === 'guide' && r.phase === 'toStop') g0 = { [m.id]: Math.max(g0[m.id] || 0, r.rem || 0) };   // only the current guide's entry, so a kiosk left on for weeks doesn't grow it
   const v = view(r, m);
   document.body.className = 't-' + v.tone;
@@ -559,12 +573,13 @@ $('main').addEventListener('click', e => {
   if (a === 'unpick') { pick = []; render(); }
   if (a === 'toDish') send({ type: 'dispatch', ...base, mission: m.id, toDish: true });
   if (a === 'release') send({ type: 'dispatch', ...base, mission: m.id, release: true });
-  if (a === 'pay') { paying = true; render(); }
-  if (a === 'payBack') { paying = false; render(); }
-  if (a === 'paid') {
-    const t = hereTable(r);
-    send({ type: 'call', point: t, what: 'paid', amount: +b.dataset.amt, by: 'Khách ' + pname(t) + ' (màn ' + ID + ')' });   // the server answers (no success toast before that)
-    paying = false; render();
+  if (a === 'pay') { paying = (billAt(hereTable(r)) || {}).id || null; render(); }
+  if (a === 'payBack') { paying = null; render(); }
+  if (a === 'claim') {   // reports the transfer for this exact bill + rev; staff confirm it at the station
+    const bl = payBill(r);
+    if (bl && bl.status === 'prepared') request({ type: 'billClaim', bill: bl.id, rev: bl.rev, by: 'Khách ' + pname(bl.table) + ' (màn ' + ID + ')' },
+      ['Đã báo nhân viên — vui lòng chờ xác nhận', 'Staff notified — please wait for confirmation'], render, true);
+    render();
   }
   if (a === 'order') { ordering = true; cart = {}; otable = null; render(); }
   if (a === 'orderBack') { ordering = false; render(); }
@@ -593,5 +608,12 @@ connect(msg => {
   if (msg.type === 'event' && msg.reply && !msg.settled && msg.ok === false) toast(refusal(msg), 'warn');   // guide / bus / speed refused
 });
 setInterval(tick, 1000);
+// vietqr.io unreachable (Wi-Fi without Internet keeps navigator.onLine true): the site's static QR, else the account text alone.
+$('main').addEventListener('error', e => {
+  const img = e.target, P = App.site.payment || {};
+  if (img.tagName !== 'IMG' || !img.closest('.qr')) return;
+  if (P.qr && !img.hasAttribute('data-static')) { img.setAttribute('data-static', ''); img.src = P.qr; img.closest('.qr').querySelector('.sq').hidden = false; }
+  else img.remove();
+}, true);
 </script>
 </body></html>

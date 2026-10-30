@@ -60,10 +60,42 @@ async function push(context, edit) {
 // Records every toast the page shows (common.js toast, or the robot screen's own).
 const spyToasts = (page) => page.evaluate(() => { window.toasts = []; const t = window.toast; window.toast = (x, l) => { toasts.push(x); t(x, l); }; });
 const robotOf = (page, id) => page.evaluate((id) => App.state.robots.find((r) => r.id === id), id);
+// Billing (spec §7): robot orders through the real order command, bills prepared through the station UI.
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+const vnd = (n) => String(n).replace(/\B(?=(\d{3})+$)/g, ".") + "đ";
+const billing = (s) => { Object.assign(s.features, { order: true, pay: true, requestBill: true }); s.service.requestStation = "bar"; };
+async function order(page, table, items) {
+  const n = await page.evaluate(() => App.state.orders.length);
+  await page.evaluate(([table, items]) => send({ type: "order", table, items, by: "Smoke" }), [table, items]);
+  await page.waitForFunction((n) => App.state.orders.length > n, n);
+  return page.evaluate((t) => App.state.orders.filter((o) => o.table === t).reduce((a, o) => a + o.total, 0), table);
+}
+async function prepare(st, table, total, note) {
+  if (await st.locator(`[data-act="bPick"][data-t="${table}"]`).count()) await st.locator(`[data-act="bPick"][data-t="${table}"]`).click();
+  else await st.selectOption("#bOther", table);
+  await st.fill("#bTotal", String(total));
+  if (note) await st.fill("#bNote", note);
+  await st.check("#bOk");
+  await st.locator('[data-act="bPrepare"]').click();
+  await st.waitForFunction((t) => App.state.bills.some((b) => b.table === t), table);
+  return st.evaluate((t) => App.state.bills.find((b) => b.table === t), table);
+}
+async function summon(page, robot, table) {
+  await page.evaluate(([robot, to]) => send({ type: "create", kind: "summon", to, robot, by: "Smoke" }), [robot, table]);
+  await page.waitForFunction(([id, t]) => { const r = App.state.robots.find((x) => x.id === id); return r.phase === "atStop" && r.at === t; }, [robot, table], { timeout: 30000 });
+}
+// Two-step station buttons: the first tap arms, the second sends.
+const twice = async (page, sel) => { await page.locator(sel).click(); await page.locator(sel).click(); };
+// Server replies seen by this page (also the ones no request() of this page waits for).
+const spyReplies = (page) => page.evaluate(() => { window.replies = []; const s = settle; settle = (m) => { replies.push(m); return s(m); }; });
+// Keeps this page's messages of one type in window.held (the tap stays pending) until the test sends them with realSend.
+const hold = (page, type) => page.evaluate((type) => { window.held = []; window.realSend = send; send = (o) => (o.type === type ? held.push(o) : realSend(o)); }, type);
 const fits = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight);
 // One fresh context per scenario: empty state (reset), then the same saved site — every feature off, no request station —
 // changed by edit(site) for this scenario.
+// SMOKE_ONLY=<regex> runs the matching scenarios only (e.g. SMOKE_ONLY=billing).
 async function scenario(name, fn, edit = () => {}) {
+  if (process.env.SMOKE_ONLY && !new RegExp(process.env.SMOKE_ONLY).test(name)) return;
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   try {
     const page = await open(context, "setup.html");
@@ -365,6 +397,233 @@ async function scenario(name, fn, edit = () => {}) {
       s.features.guide = true;
       s.robots[1] = { ...s.robots[1], driver: "valetudo", valetudo: { topic: "smoke/guide", points: { kitchen: { x: 2000, y: 1000 }, T05: { x: 3000, y: 1400 } } } };
     });
+
+    await scenario("billing: staff prepare → robot QR of the bill total → guest claim → ack keeps orders → settle → close once the table is clear", async (context) => {
+      await context.route(/img\.vietqr\.io/, (r) => r.fulfill({ contentType: "image/png", body: PNG }));
+      const st = await app(context, "station.html?role=bep&name=Smoke"), robot = await app(context, "robot.html?robot=R1");
+      await robot.locator("#start").click();
+      await order(st, "T05", [{ id: "pho", qty: 2 }]);
+      const ref = await order(st, "T05", [{ id: "bia", qty: 1 }]);
+      await st.evaluate(() => send({ type: "call", point: "T05", what: "bill", requestId: "smoke-bill-T05", by: "Smoke" }));
+      await st.locator('#strips [data-act="openBill"]').click();   // the alert leads to the billing view, the table chosen
+      assert.deepEqual(await st.evaluate(() => [document.querySelector(".screen").dataset.v, B.table]), ["bill", "T05"]);
+      await expectText(st, "#bHead", `Tổng tham khảo từ đơn robot\\s*${vnd(ref)}`);
+      await st.locator('#bHead [data-act="ack"]').click();   // Đã nhận yêu cầu: hides the request only
+      await st.waitForFunction(() => !App.state.alerts.some((a) => a.key === "call-bill-T05"));
+      assert.equal(await st.evaluate(() => App.state.orders.filter((o) => o.table === "T05").length), 2);
+
+      // Total differs from the robot orders: a note is required, and the "checked everything" box always is.
+      await st.fill("#bTotal", String(ref + 20000));
+      await expectText(st, "#bActs", "Tổng khác tổng tham khảo — cần ghi chú");
+      assert(await st.locator('[data-act="bPrepare"]').isDisabled());
+      await st.fill("#bNote", "Thêm 2 trà đá gọi tại quầy");
+      await expectText(st, "#bActs", "Đã đối chiếu toàn bộ khoản phải thu");
+      assert(await st.locator('[data-act="bPrepare"]').isDisabled());
+      const bill = await prepare(st, "T05", ref + 20000);
+      assert.deepEqual([bill.status, bill.total, bill.suggested, bill.note, bill.orderIds.length], ["prepared", ref + 20000, ref, "Thêm 2 trà đá gọi tại quầy", 2]);
+      await st.waitForFunction(() => document.querySelector("#bReason"));   // the form follows the bill
+      for (const [width, height] of [[1280, 800], [800, 1280]]) {
+        await st.setViewportSize({ width, height });
+        await st.waitForTimeout(200);
+        assert(await fits(st), `station billing overflows at ${width}×${height}`);
+        if (process.env.SMOKE_SHOTS) await st.screenshot({ path: `${process.env.SMOKE_SHOTS}/station-bill-${width}x${height}.png` });
+      }
+      await st.setViewportSize({ width: 1280, height: 800 });
+
+      // The guest orders more while the bill is open: refused with a reason, the cart stays.
+      await summon(st, "R1", "T05");
+      await spyToasts(robot);
+      await robot.locator('[data-act="order"]').click();
+      await robot.locator('[data-qty="pho"][data-d="1"]').click();
+      await robot.locator('[data-act="orderSend"]').click();
+      await robot.waitForFunction(() => toasts.some((x) => /Bàn đang tính tiền/.test(x)));
+      assert.deepEqual(await robot.evaluate(() => cart), { pho: 1 });
+      await robot.locator('[data-act="orderBack"]').click();
+
+      await robot.locator('[data-act="pay"]').click();
+      assert.match(await robot.locator("#body .eyebrow").textContent(), /Phiếu tính tiền do nhân viên xác nhận/);   // innerText is uppercased
+      assert.equal(await robot.locator(".qr .amt").innerText(), vnd(bill.total));
+      const src = await robot.locator(".qr img").getAttribute("src");
+      assert.match(src, new RegExp(`amount=${bill.total}&addInfo=Ban%2005%20phieu%20${bill.id}`));
+      await expectText(robot, ".qr", "Kiểm tra tên người nhận");
+      for (const [width, height] of [[1280, 800], [800, 1280]]) {
+        await robot.setViewportSize({ width, height });
+        await robot.waitForTimeout(200);
+        assert(await fits(robot), `robot pay screen overflows at ${width}×${height}`);
+        if (process.env.SMOKE_SHOTS) await robot.screenshot({ path: `${process.env.SMOKE_SHOTS}/robot-pay-${width}x${height}.png` });
+      }
+      await robot.evaluate(() => { toasts.length = 0; });
+      await robot.locator('[data-act="claim"]').click();
+      await robot.waitForFunction(() => App.state.bills[0].status === "claimed" && /Đang chờ nhân viên xác nhận/.test($("body").innerText));
+      assert.equal(await robot.locator('[data-act="claim"]').count(), 0);   // no second transfer prompt
+      await robot.waitForFunction(() => toasts.includes("Đã báo nhân viên — vui lòng chờ xác nhận · Staff notified — please wait for confirmation"));
+
+      // Station: the claim is a request to acknowledge; the bill and its orders stay until settled and closed.
+      await st.waitForFunction((id) => App.state.alerts.some((a) => a.key === "bill-claim-" + id), bill.id);
+      await expectText(st, "#bForm", "Khách đã báo chuyển khoản — kiểm tra giao dịch trước khi tạo phiếu mới");
+      await st.locator('#bHead [data-act="ack"]').click();
+      await st.waitForFunction(() => !App.state.alerts.some((a) => a.key.startsWith("bill-claim-")));
+      assert.deepEqual(await st.evaluate(() => [App.state.orders.filter((o) => o.table === "T05").length, App.state.bills[0].status]), [2, "claimed"]);
+      await st.evaluate(() => { window.sent = []; const s = send; send = (o) => { sent.push(structuredClone(o)); s(o); }; });
+      assert(await st.locator('[data-act="bSettle"]').isDisabled());   // the method first
+      await st.locator('[data-act="bMethod"][data-v="transfer"]').click();
+      await st.locator('[data-act="bSettle"]').click();
+      await expectText(st, '[data-act="bSettle"]', "Chạm lần nữa để xác nhận");
+      assert.equal(await st.evaluate(() => App.state.bills[0].status), "claimed");
+      await st.locator('[data-act="bSettle"]').click();
+      await st.waitForFunction(() => App.state.bills[0].status === "settled" && App.state.bills[0].method === "transfer");
+      await robot.waitForFunction(() => /Đã được nhân viên xác nhận/.test($("body").innerText));
+      assert.equal(await robot.locator('[data-act="claim"]').count(), 0);
+
+      // The settle tap retried after a reload replays the first answer; a fresh request on the old rev is stale.
+      const settleMsg = await st.evaluate(() => sent.find((o) => o.type === "billSettle"));
+      await st.reload();
+      await st.waitForFunction(() => App.site && App.state);
+      await spyReplies(st);
+      await st.evaluate((m) => { send(m); send({ ...m, requestId: "smoke-settle-again" }); }, settleMsg);
+      await st.waitForFunction(() => replies.length === 2);
+      assert.deepEqual(await st.evaluate(() => replies.map((r) => [r.ok, r.duplicate || r.code])), [[true, true], [false, "stale"]]);
+      assert.equal(await st.evaluate(() => App.state.log.filter((l) => / đã xác nhận thu /.test(l.text)).length), 1);
+
+      // Close waits until nothing is still heading to the table: the robot leaves, then a delivery is refused, then cancelled.
+      await robot.locator('[data-act="payBack"]').click();
+      await robot.locator('[data-act="release"]').click();
+      await st.waitForFunction(() => !App.state.missions.some((m) => m.robot === "R1" && m.kind === "summon"));
+      await st.evaluate(() => send({ type: "create", kind: "deliver", from: "kitchen", tables: ["T05"], robot: "R2", by: "Smoke" }));
+      await st.waitForFunction(() => App.state.missions.some((m) => m.kind === "deliver"));
+      await spyToasts(st);
+      await st.evaluate(() => setView("bill"));   // the reload above opened the default view
+      await st.locator('[data-act="bPick"][data-t="T05"]').click();
+      await twice(st, '[data-act="bClose"]');
+      await st.waitForFunction(() => toasts.includes("Bàn còn đơn mới hoặc món đang giao"));
+      assert.deepEqual(await st.evaluate(() => [App.state.bills[0].status, App.state.orders.filter((o) => o.table === "T05").length]), ["settled", 2]);
+      await st.evaluate(() => send({ type: "cancel", mission: App.state.missions.find((m) => m.kind === "deliver").id, by: "Smoke" }));
+      await st.waitForFunction(() => !App.state.missions.some((m) => m.kind === "deliver"));
+      await st.evaluate(() => { window.sent = []; const s = send; send = (o) => { sent.push(structuredClone(o)); s(o); }; });
+      await twice(st, '[data-act="bClose"]');
+      await st.waitForFunction(() => !App.state.bills.length && !App.state.orders.some((o) => o.table === "T05"));
+      const closeMsg = await st.evaluate(() => sent.find((o) => o.type === "billClose"));
+      await st.reload();
+      await st.waitForFunction(() => App.site && App.state);
+      await spyReplies(st);
+      await st.evaluate((m) => send(m), closeMsg);
+      await st.waitForFunction(() => replies.length === 1);
+      assert.deepEqual(await st.evaluate(() => [replies[0].ok, replies[0].duplicate, App.state.log.filter((l) => / đã đóng /.test(l.text)).length]), [true, true, 1]);
+    }, billing);
+
+    await scenario("billing: 0đ bill has no QR; QR failure falls back to the static QR; bank change refused; pay off mid-screen still claims", async (context) => {
+      await context.route(/img\.vietqr\.io/, (r) => r.abort());
+      const st = await app(context, "station.html?role=bep&name=Smoke&view=bill");
+      const r1 = await app(context, "robot.html?robot=R1"), r2 = await app(context, "robot.html?robot=R2");
+      for (const p of [r1, r2]) await p.locator("#start").click();
+
+      // No robot orders (ordered at the counter): any table can be picked; the total needs its source described.
+      await st.selectOption("#bOther", "T06");
+      await st.fill("#bTotal", "0");
+      await expectText(st, "#bActs", "Bàn không có đơn robot — cần ghi rõ nguồn đã đối chiếu");
+      const zero = await prepare(st, "T06", 0, "Khách dùng voucher toàn bộ");
+      assert.deepEqual([zero.total, zero.orderIds], [0, []]);
+      await summon(st, "R1", "T06");
+      await r1.locator('[data-act="pay"]').click();
+      await expectText(r1, ".qr", "Nhân viên sẽ hoàn tất tại quầy");
+      assert.deepEqual(await r1.evaluate(() => [document.querySelectorAll(".qr img").length, document.querySelectorAll('[data-act="claim"]').length]), [0, 0]);
+      await st.locator('[data-act="bPick"][data-t="T06"]').click();
+      assert.equal(await st.locator('[data-act="bMethod"]').count(), 0);
+      await twice(st, '[data-act="bSettle"]');
+      await st.waitForFunction(() => App.state.bills.find((b) => b.table === "T06").method === "zero");
+      await r1.waitForFunction(() => /Đã được nhân viên xác nhận/.test($("body").innerText));
+
+      // vietqr.io unreachable: the static QR with the exact total to type in, and the recipient to check.
+      const ref = await order(st, "T05", [{ id: "pho", qty: 1 }]);
+      const bill = await prepare(st, "T05", ref);   // same as the robot orders: no note needed
+      await summon(st, "R2", "T05");
+      await r2.locator('[data-act="pay"]').click();
+      await r2.waitForFunction(() => /^data:image\/png/.test(document.querySelector(".qr img").src));
+      assert(await r2.locator(".qr .sq").isVisible());
+      assert.equal(await r2.locator(".qr .amt").innerText(), vnd(ref));
+      await expectText(r2, ".qr", "Kiểm tra tên người nhận · Check the recipient: MEKONIQ DEMO");
+
+      // The payee cannot change under a prepared bill.
+      const setup = await open(context, "setup.html?tab=features");
+      await setup.evaluate(() => { D.payment.account = "1111111111"; setDirty(true); });
+      await setup.locator("#save").click();
+      await setup.waitForFunction(() => !saving);
+      await expectText(setup, "#strips", "Bàn 05 đang chờ thanh toán");
+      assert.equal(await setup.evaluate(() => App.site.payment.account), "0000000000");
+      await setup.close();
+
+      // Pay off: no new pay screen, but the open one keeps its bill and the claim goes through.
+      await push(context, (s) => { s.features.pay = false; });
+      await r2.waitForFunction(() => !feat("pay"));
+      assert.equal(await r2.locator(".qr .amt").innerText(), vnd(ref));
+      await r2.locator('[data-act="claim"]').click();
+      await st.waitForFunction((id) => App.state.bills.find((b) => b.id === id).status === "claimed", bill.id);
+      await r2.waitForFunction(() => /Đang chờ nhân viên xác nhận/.test($("body").innerText));
+      await r2.locator('[data-act="payBack"]').click();
+      assert.equal(await r2.locator('[data-act="pay"]').count(), 0);
+
+      // Void needs a reason and two taps; the guest's report stays visible as a warning; the orders stay open.
+      await st.locator('[data-act="bPick"][data-t="T05"]').click();
+      await expectText(st, "#bForm", "Khách đã báo chuyển khoản — kiểm tra giao dịch trước khi tạo phiếu mới");
+      assert(await st.locator('[data-act="bVoid"]').isDisabled());
+      await st.fill("#bReason", "Khách gọi thêm món");
+      await twice(st, '[data-act="bVoid"]');
+      await st.waitForFunction((id) => !App.state.bills.some((b) => b.id === id) && document.querySelector("#bTotal"), bill.id);
+      assert.equal(await st.evaluate(() => App.state.orders.filter((o) => o.table === "T05").length), 1);
+    }, (s) => { billing(s); s.payment.qr = "data:image/png;base64," + PNG.toString("base64"); });
+
+    await scenario("billing: two stations race one table, changed orders refuse the bill and keep what was typed, a stale claim shows the server text", async (context) => {
+      const a = await app(context, "station.html?role=bep&name=A&view=bill"), b = await app(context, "station.html?role=bar&name=B&view=bill");
+      const robot = await app(context, "robot.html?robot=R1");
+      await robot.locator("#start").click();
+      const ref = await order(a, "T05", [{ id: "pho", qty: 1 }]);
+      for (const p of [a, b]) {
+        await spyToasts(p);
+        await p.locator('[data-act="bPick"][data-t="T05"]').click();
+        await p.fill("#bTotal", String(ref));
+        await p.check("#bOk");
+      }
+      // Both tapped before either answer arrives: hold both sends, then let them go together.
+      for (const p of [a, b]) { await hold(p, "billPrepare"); await p.locator('[data-act="bPrepare"]').click(); }
+      await Promise.all([a, b].map((p) => p.evaluate(() => { send = realSend; send(held[0]); })));
+      await a.waitForFunction(() => App.state.bills.length === 1);
+      await Promise.all([a, b].map((p) => p.waitForFunction(() => !sending((q) => q.type === "billPrepare"))));
+      const told = await Promise.all([a, b].map((p) => p.evaluate(() => toasts)));
+      assert.equal(told.flat().filter((x) => x === "Bàn đang có phiếu tính tiền chưa đóng").length, 1, told.join(" | "));
+      await a.waitForTimeout(300);
+      assert.equal(await a.evaluate(() => App.state.bills.length), 1);
+      for (const p of [a, b]) assert.match(await p.locator("#bHead").textContent(), /Phiếu #\d+/);   // both show the one bill
+
+      // A new order lands while the prepare is on its way: the server refuses it, the typed total and note stay, the check resets.
+      await order(a, "T06", [{ id: "bia", qty: 2 }]);
+      await a.locator('[data-act="bPick"][data-t="T06"]').click();
+      await a.fill("#bTotal", "60000");
+      await a.fill("#bNote", "Thêm 1 bia ngoài");
+      await a.check("#bOk");
+      await hold(a, "billPrepare");
+      await a.locator('[data-act="bPrepare"]').click();
+      await expectText(a, '[data-act="bPrepare"]', "Đang gửi…");
+      await order(a, "T06", [{ id: "bia", qty: 1 }]);
+      await a.evaluate(() => { toasts.length = 0; send = realSend; send(held[0]); });
+      await a.waitForFunction(() => toasts.length);
+      assert.deepEqual(await a.evaluate(() => [toasts, $("bTotal").value, $("bNote").value, $("bOk").checked, App.state.bills.some((x) => x.table === "T06")]),
+        [["Đơn của bàn đã thay đổi, kiểm tra lại"], "60000", "Thêm 1 bia ngoài", false, false]);
+
+      // Claim racing a settle: the robot keeps the old rev, the server refuses it and the screen follows the state.
+      await summon(a, "R1", "T05");
+      await robot.locator('[data-act="pay"]').click();
+      await spyToasts(robot);
+      await hold(robot, "billClaim");
+      await robot.locator('[data-act="claim"]').click();
+      await a.locator('[data-act="bPick"][data-t="T05"]').click();
+      await a.locator('[data-act="bMethod"][data-v="cash"]').click();
+      await twice(a, '[data-act="bSettle"]');
+      await robot.waitForFunction(() => App.state.bills.find((x) => x.table === "T05").status === "settled");
+      await robot.evaluate(() => { send = realSend; send(held[0]); });
+      await robot.waitForFunction(() => toasts.length);
+      assert.deepEqual(await robot.evaluate(() => toasts), ["Phiếu đã thay đổi, tải lại · This item has changed — please reload"]);
+      await expectText(robot, "#body", "Đã được nhân viên xác nhận");
+    }, billing);
   } finally {
     await browser.close();
     if (fake) fake.kill();
