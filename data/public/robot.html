@@ -177,7 +177,7 @@
 <button id="start"><span id="startFace"></span><b>Chạm để khởi động</b><small>Tap to start</small><span>Bật âm thanh thông báo · Enable sound alerts</span></button>
 <div id="offline" hidden>Mất kết nối tới hệ thống điều phối — đang kết nối lại…</div>
 
-<script src="transport.js"></script><script src="common.js"></script>
+<script src="lib/feature-policy.js"></script><script src="transport.js"></script><script src="common.js"></script>
 <script>
 // Which robot this tablet is mounted on: robot.html?robot=R2 (default R1).
 const ID = new URLSearchParams(location.search).get('robot') || 'R1';
@@ -185,6 +185,7 @@ const cfg = () => (App.site && App.site.robots.find(r => r.id === ID)) || {};
 const isValetudo = () => cfg().driver === 'valetudo';
 const retrySec = () => (cfg().valetudo && cfg().valetudo.retrySec) || 15;
 const BY = 'Màn hình ' + ID;
+App.lang = 'both';   // every robot-screen line is VI · EN
 const $ = id => document.getElementById(id);
 document.title = 'MEKONIQ · Robot ' + ID;
 $('rid').textContent = ID;
@@ -214,14 +215,14 @@ function face(mood, move) {
 }
 $('startFace').innerHTML = face('happy');
 
-let guiding = false, gpick = null, g0 = {};   // guide: choosing the guests' table; longest route seen per mission (progress bar)
+let guiding = false, gpick = null, gsent = null, g0 = {};   // guide: staff choosing the table; requestId on its way; longest route seen per mission (progress bar)
 let paying = false;   // pay screen open
 let ordering = false, cart = {}, ocat = null, otable = null;   // order food: open, qty per item id, category tab, table picked (robot not at one)
 let pick = [], mode = 'deliver';   // tables chosen while on standby at a station; deliver | bus (one table)
 const act = (cls, vi, en, dataAct, extra = '') => `<button class="act ${cls}" data-act="${dataAct}" ${extra}>${L(vi, en)}</button>`;
 // Two-tap button: first tap arms it (label changes), second tap runs (see click handler).
 // Each screen has its own key so an armed button never carries over to the next screen.
-const armAct = (key, cls, [vi, en], [avi, aen], dataAct) => isArmed(key) ? act(cls + ' armed', avi, aen, dataAct, `data-arm="${key}"`) : act(cls, vi, en, dataAct, `data-arm="${key}"`);
+const armAct = (key, cls, [vi, en], [avi, aen], dataAct, extra = '') => isArmed(key) ? act(cls + ' armed', avi, aen, dataAct, `data-arm="${key}" ${extra}`) : act(cls, vi, en, dataAct, `data-arm="${key}" ${extra}`);
 const info = (title, text) => `<div class="info"><b>${title}</b><span>${text}</span></div>`;
 // Two-column block: face (or tray box) | eyebrow, headline, English line, extra.
 const split = (left, eyebrow, h1, en, extra = '', cls = '') =>
@@ -251,17 +252,21 @@ function routeList(m) {
 const lowBat = r => r.battery < App.site.timing.lowBattery;
 const batChip = r => lowBat(r) ? `<div class="chips"><span class="pill danger">Pin ${Math.round(r.battery)}% · về sạc sau việc này</span></div>` : '';
 
-// Guests can be led to a table from where they wait: a standby stop at a station / the entrance (spec 6.2).
+// Staff lead guests from where they wait (a standby stop at a station / the entrance) to a table they pick and confirm (F08).
 function canGuide(r, m) {
   if (!feat('guide') || r.halt || r.offline) return false;
   const s = m && r.phase === 'atStop' && m.stops[m.cur];
   return !!s && s.a === 'standby' && ['station', 'entrance'].includes((App.site.points[s.p] || {}).kind);
 }
-const guideBtn = (r, m) => canGuide(r, m) ? act('primary', 'Dẫn tôi tới bàn', 'Guide me to a table', 'guide') : '';
+const guideBtn = (r, m) => canGuide(r, m) ? act('primary', 'Nhân viên: dẫn khách tới bàn', 'Staff: guide guests to a table', 'guide') : '';
+// Slow mode only where the driver can do it (simulator); a Valetudo robot has no such button (spec §5).
+const speedBtn = r => !FeaturePolicy.capabilities(cfg()).speedControl ? ''
+  : r.slow ? act('outline', 'Đi bình thường', 'Normal speed', 'speed') : act('outline', 'Đi chậm hơn', 'Slower please', 'speed');
 const tablesOf = () => Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
 // Order food (spec 6.3): wherever the robot stands still; the table is where it stands, else the guest picks one.
 const menu = () => App.site.menu || { cats: [], items: [] };
-const canOrder = r => feat('order') && menu().items.length > 0 && !r.halt && !r.offline && ['idle', 'atStop'].includes(r.phase);
+const still = r => !r.halt && !r.offline && ['idle', 'atStop'].includes(r.phase);   // an open cart survives the order flag going off, not the robot leaving
+const canOrder = r => feat('order') && still(r);
 const orderBtn = r => canOrder(r) ? act('outline', 'Gọi món', 'Order food', 'order') : '';
 const hereTable = r => r.phase === 'atStop' && (App.site.points[r.at] || {}).kind === 'table' ? r.at : null;
 function orderView(r) {
@@ -272,18 +277,20 @@ function orderView(r) {
     acts: act('outline', 'Quay lại', 'Back', 'orderBack') };
   const M = menu(), cat = M.cats.some(c => c.id === ocat) ? ocat : (M.cats[0] || {}).id;
   const lines = M.items.filter(i => cart[i.id]), n = lines.reduce((a, i) => a + cart[i.id], 0), total = lines.reduce((a, i) => a + cart[i.id] * i.price, 0);
+  const off = !feat('order'), busy = sending(q => q.type === 'order');   // off: the cart stays, sending waits until ordering is back (spec §9)
   return { bar: `${pname(t)} · Gọi món`, sub: 'Order food', tone: 'go',
     body: `<div class="order"><div class="seg">${M.cats.map(c => `<button data-cat="${esc(c.id)}" aria-pressed="${c.id === cat}">${L(esc(c.vi), esc(c.en))}</button>`).join('')}</div>
       <div class="menu-grid">${M.items.filter(i => i.cat === cat).map(i => `<div class="mi${cart[i.id] ? ' on' : ''}"><div class="img"></div>
         <div class="t"><b>${esc(i.vi)}</b><small>${esc(i.en)}</small></div>
         <div class="q"><span class="pr">${vnd(i.price)}</span>${cart[i.id] ? `<button data-qty="${esc(i.id)}" data-d="-1" aria-label="Bớt">−</button><span>${cart[i.id]}</span>` : ''}<button class="plus" data-qty="${esc(i.id)}" data-d="1" aria-label="Thêm">+</button></div></div>`).join('')}</div></div>`,
     acts: info(`Giỏ · ${n} món · ${vnd(total)}`, lines.length ? lines.map(i => `${esc(i.vi)} ×${cart[i.id]}`).join(' · ') : 'Chạm + để chọn món · Tap + to add')
-      + act('primary', n ? `Gửi bếp ${n} món` : 'Chưa chọn món', n ? 'Send to kitchen' : 'Nothing yet', 'orderSend', n ? '' : 'disabled')
+      + (off ? info('Tạm ngưng gọi món', 'Giỏ vẫn được giữ, gửi được khi nhà hàng mở lại gọi món · Ordering is paused, your cart is kept') : '')
+      + act('primary', busy ? 'Đang gửi…' : n ? `Gửi bếp ${n} món` : 'Chưa chọn món', busy ? 'Sending…' : n ? 'Send to kitchen' : 'Nothing yet', 'orderSend', n && !off && !busy ? '' : 'disabled')
       + act('outline', 'Quay lại', 'Back', 'orderBack') };
 }
-// Pay at the table (spec 6.4): bill = this table's orders not yet reported paid. Needs features.call to reach staff.
+// Pay at the table (spec 6.4): bill = this table's orders not yet reported paid. Independent of callStaff (F10).
 const bill = t => ((App.state && App.state.orders) || []).filter(o => o.table === t && o.status === 'new');
-const canPay = r => feat('pay') && feat('call') && !r.halt && !r.offline && !!hereTable(r) && bill(hereTable(r)).length > 0;
+const canPay = r => feat('pay') && !r.halt && !r.offline && !!hereTable(r) && bill(hereTable(r)).length > 0;
 const payBtn = r => canPay(r) ? act('outline', 'Thanh toán', 'Pay the bill', 'pay') : '';
 function payView(r) {
   const t = hereTable(r), orders = bill(t), M = menu(), P = App.site.payment || {};
@@ -304,11 +311,25 @@ function payView(r) {
         <div class="acct">${P.account ? `${esc(P.bank)} · ${esc(P.account)}${P.name ? ' · ' + esc(P.name) : ''}` : 'Vui lòng thanh toán với nhân viên · Please pay staff'}</div>
         <small class="muted">Nội dung · Note: ${esc(info2)}</small></div></div>`,
     acts: act('primary', 'Tôi đã chuyển khoản', "I've paid", 'paid', `data-amt="${total}"`)
-      + act('outline', 'Tiền mặt / thẻ', 'Cash or card · call staff', 'call', `data-p="${esc(t)}" data-w="bill"`)
+      + (feat('requestBill') ? act('outline', 'Tiền mặt / thẻ', 'Cash or card · call staff', 'call', `data-p="${esc(t)}" data-w="bill"`) : '')
       + act('outline', 'Quay lại', 'Back', 'payBack') };
 }
-// Call staff to a table (spec 6.1): needs features.call.
-const callBtn = t => feat('call') && t ? act('outline', 'Gọi nhân viên', 'Call staff', 'call', `data-p="${esc(t)}"`) : '';
+// Guest calls from a table (spec §6): "Gọi nhân viên" and "Yêu cầu tính tiền" have independent flags; held while on their way.
+function callBtn(t, w, vi, en) {
+  if (!t || !feat(w === 'bill' ? 'requestBill' : 'callStaff')) return '';
+  const busy = sending(q => q.type === 'call' && q.point === t && q.what === w);
+  return act('outline', busy ? 'Đang gửi…' : vi, busy ? 'Sending…' : en, 'call', `data-p="${esc(t)}" data-w="${w}"${busy ? ' disabled' : ''}`);
+}
+const callBtns = t => callBtn(t, 'staff', 'Gọi nhân viên', 'Call staff') + callBtn(t, 'bill', 'Yêu cầu tính tiền', 'Request the bill');
+// Guest problem with the item on this tray (F05): policy request tells staff and the trip goes on; direct sends the item
+// back (the delivery trip only, not a refund). Bound to this mission/stop/table, so a later screen never inherits it.
+function problemBtn(m) {
+  const s = m.stops[m.cur], data = `data-m="${m.id}" data-s="${m.cur}" data-p="${esc(s.p)}"`;
+  if (App.site.customerCancel === 'direct') return armAct(`cx-${m.id}-${m.cur}`, 'warn', ['Yêu cầu mang món về', 'Send this item back'],
+    ['Chạm lần nữa · mang món về, không phải hoàn tiền', 'Tap again · trip only, not a refund'], 'cancelStop', data);
+  const busy = sending(q => q.type === 'returnRequest' && q.mission === m.id && q.stop === m.cur);
+  return act('warn', busy ? 'Đang gửi…' : 'Báo nhầm món / Cần hỗ trợ', busy ? 'Sending…' : 'Wrong item / Need help', 'returnRequest', data + (busy ? ' disabled' : ''));
+}
 
 // Each state -> { bar, sub: app-bar title + English line, tone, body: content column, acts: action zone }.
 function view(r, m) {
@@ -347,22 +368,24 @@ function view(r, m) {
     acts: act('outline', 'Nhân viên: đã dọn lối', 'Path cleared', 'clear') };
 
   if (paying && canPay(r)) return payView(r);
-  if (ordering && canOrder(r)) return orderView(r);
-  if (guiding && canGuide(r, m)) return { bar: 'Dẫn khách · Chọn bàn', sub: 'Guide · Choose a table', tone: 'go',
-    body: `<div class="load"><div class="step"><h2>Quý khách ngồi bàn nào? <small>Which table are you seated at?</small></h2></div>
+  if (ordering && still(r)) return orderView(r);
+  // The robot cannot tell which tables are free: staff pick the table they gave the guests, then confirm.
+  if (guiding && canGuide(r, m)) return { bar: 'Dẫn khách · Nhân viên chọn bàn', sub: 'Guide · Staff picks the table', tone: 'go',
+    body: `<div class="load"><div class="step"><h2>Nhân viên: chọn bàn đã xếp cho khách <small>Staff: pick the table for the guests</small></h2></div>
       <div class="tt-grid cols6">${tablesOf().map(t => `<button class="tt" data-g="${t}" aria-pressed="${gpick === t}"><span class="lbl">Bàn</span><b>${esc(short(t))}</b></button>`).join('')}</div></div>`,
-    acts: act('primary', gpick ? `Đi tới Bàn ${esc(short(gpick))}` : 'Chọn bàn', gpick ? 'Follow me' : 'Pick a table', 'guideGo', gpick ? '' : 'disabled')
+    acts: info('Bàn do nhân viên xếp', 'Robot không biết bàn nào trống · The robot cannot tell which tables are free')
+      + act('primary', gsent ? 'Đang gửi…' : gpick ? `Xác nhận · dẫn tới Bàn ${esc(short(gpick))}` : 'Chọn bàn', gsent ? 'Sending…' : gpick ? 'Confirm · lead the guests' : 'Pick a table', 'guideGo', gpick && !gsent ? '' : 'disabled')
       + act('outline', 'Quay lại', 'Back', 'guideBack') };
   if (r.phase === 'atStop' && m) {
     const s = m.stops[m.cur], place = pname(s.p);
     if (s.a === 'guide') return { bar: `${place} · Đã tới`, sub: "We're here", tone: 'ok',
       body: split(face('happy'), 'Dẫn khách · Guide', `Đã tới ${esc(place)}.`, `This is ${esc(place)}. Enjoy your meal!`, '<p class="lead" id="timer"></p>'),
-      acts: act('primary', 'Đã tới bàn', "We're here", 'confirm') + callBtn(s.p) };
+      acts: act('primary', 'Đã tới bàn', "We're here", 'confirm') + callBtns(s.p) };
     if (s.a === 'handoff') return { bar: `${place} · Giao món đến`, sub: 'Your order is here', tone: lowBat(r) ? 'warn' : 'ok',
       body: split(trays([s.tray], trayLabels(m)), `${esc(place)} · Đã tới`, `Mời quý khách lấy món ở Khay ${s.tray}`, `Please take your order from Tray ${s.tray}`,
         `${m.note ? `<div class="card note"><small>Ghi chú · Note</small>${esc(m.note)}</div>` : ''}<p class="lead" id="timer"></p>${batChip(r)}`, 'hand'),
       acts: act('primary', 'Đã nhận món', 'Got it, thanks', 'confirm')
-        + armAct('cx', 'warn', ['Trả lại bếp', 'Not mine, send back'], ['Chạm lần nữa · robot mang món về', 'Tap again to send it back'], 'cancelStop') + callBtn(s.p) };   // no order/pay here: the handoff timer keeps running
+        + problemBtn(m) + callBtns(s.p) };   // no order/pay here: the handoff timer keeps running
     if (s.a === 'load') {
       const open = m.stops.filter(x => x.a === 'handoff' && !isOff(x)).map(x => x.tray);
       return { bar: `${place} · Xếp món lên khay`, sub: 'Load the trays', tone: 'go',
@@ -385,14 +408,14 @@ function view(r, m) {
       body: split(face('happy'), esc(place), 'Dỡ chén đĩa.', 'Please unload the dishes.'),
       acts: act('primary', 'Đã dỡ xong', 'Unloaded', 'confirm') };
     if (s.a === 'standby') {
-      const toDish = s.p !== App.site.dishPoint && act('outline', 'Mang chén về khu rửa', 'Take dishes to wash', 'toDish');
+      const toDish = feat('busRobot') && s.p !== App.site.dishPoint && act('outline', 'Mang chén về khu rửa', 'Take dishes to wash', 'toDish');   // new bus trip from the robot (F04)
       if (App.site.points[s.p].kind !== 'station') return { bar: `${place} · Chờ lệnh`, sub: 'Standby', tone: 'go',
         body: split(face('wait'), `${esc(place)} · Chờ lệnh`, 'Robot đang chờ.', 'Robot is waiting.', `<p class="lead">Gọi bởi ${esc(m.by)}</p>`),
         acts: guideBtn(r, m) + orderBtn(r) + payBtn(r) + (toDish || '') + act('primary', 'Xong · Cho robot về', 'Done · Send robot back', 'release') };
       const tables = Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
       return { bar: `${place} · Chờ lệnh`, sub: 'Choose tables', tone: 'go',
         body: `<div class="load"><p class="eyebrow">Gọi bởi ${esc(m.by)}</p>
-          <div class="step"><h2>1 · Chọn việc <small>Choose task</small></h2>${[['deliver', 'Giao món', 'Deliver'], ['bus', 'Thu dọn bàn', 'Bus a table']].map(([k, vi, en]) =>
+          <div class="step"><h2>1 · Chọn việc <small>Choose task</small></h2>${[['deliver', 'Giao món', 'Deliver'], ['bus', 'Thu dọn bàn', 'Bus a table']].filter(([k]) => k !== 'bus' || feat('busRobot')).map(([k, vi, en]) =>
             `<button class="choice" data-mode="${k}" aria-pressed="${mode === k}">${L(vi, en)}</button>`).join('')}</div>
           <div class="step"><h2>2 · Chọn bàn <small>${mode === 'bus' ? 'Choose a table' : 'Choose tables'}</small></h2><span class="count">${mode === 'bus' ? pick.length + '/1 bàn' : `${pick.length}/${App.site.trays} khay`}</span></div>
           <div class="tt-grid cols6">${tables.map(t => {
@@ -414,8 +437,7 @@ function view(r, m) {
         <p class="dest" style="--n:${Math.max(3, place.length)}">${esc(place)}</p><p id="timer"></p><div class="gbar"><i id="gbar"></i></div>
         <div class="yield">Xin quý khách đi sau robot · Please walk behind the robot</div>${batChip(r)}</div></div>`,
       acts: info(r.slow ? 'Đang đi chậm' : 'Đang dẫn đường', 'Robot tự dừng khi có người hoặc vật cản · Stops for people and obstacles')
-        + (r.slow ? act('outline', 'Đi bình thường', 'Normal speed', 'speed') : act('outline', 'Đi chậm hơn', 'Slower please', 'speed'))
-        + callBtn(m.stops[m.cur].p)
+        + speedBtn(r) + callBtns(m.stops[m.cur].p)
         + armAct('cg', 'danger', ['Huỷ dẫn đường', 'Cancel'], ['Chạm lần nữa để huỷ', 'Tap again to cancel'], 'cancel') };
   }
   if (r.phase === 'toStop' && m) {
@@ -459,11 +481,15 @@ function render() {
   if (dest && lastDest && dest !== lastDest && dest.split(':').slice(0, 2).join() === lastDest.split(':').slice(0, 2).join())
     toast(`Đổi đích → ${pname(m.stops[m.cur].p)} · New destination`);
   lastDest = dest;
-  if (!(r && r.phase === 'atStop' && m && m.stops[m.cur].a === 'standby')) { pick = []; mode = 'deliver'; }
-  if (!r || !canGuide(r, m)) { guiding = false; gpick = null; }
-  if (!r || !canOrder(r)) {
-    if (ordering && Object.values(cart).some(q => q > 0)) toast('Robot phải đi — đơn chưa gửi, gọi nhân viên · Robot had to leave, order not sent', 'warn');
+  if (!(r && r.phase === 'atStop' && m && m.stops[m.cur].a === 'standby') || (mode === 'bus' && !feat('busRobot'))) { pick = []; mode = 'deliver'; }
+  if (!r || !canGuide(r, m)) { if (gsent) forget(gsent); guiding = false; gpick = null; gsent = null; }   // guide accepted: the robot left standby
+  if (!r || !still(r)) {
+    if (ordering && Object.values(cart).some(q => q > 0) && !sending(q => q.type === 'order')) toast('Robot phải đi — đơn chưa gửi, gọi nhân viên · Robot had to leave, order not sent', 'warn');
     ordering = false; cart = {}; otable = null;
+  } else if (ordering && feat('order')) {   // ordering (back) on: keep only what the current menu still has
+    const gone = Object.keys(cart).filter(id => !menu().items.some(i => i.id === id));
+    for (const id of gone) delete cart[id];
+    if (gone.length) toast('Món không còn trong thực đơn đã được bỏ khỏi giỏ · Items no longer on the menu were removed', 'warn');
   }
   if (!r || !canPay(r)) paying = false;
   if (r && m && m.kind === 'guide' && r.phase === 'toStop') g0 = { [m.id]: Math.max(g0[m.id] || 0, r.rem || 0) };   // only the current guide's entry, so a kiosk left on for weeks doesn't grow it
@@ -517,7 +543,10 @@ $('main').addEventListener('click', e => {
     const s = m.stops[m.cur];
     send({ type: 'confirm', ...base, by: s.a === 'handoff' ? 'Khách ' + pname(s.p) : BY, mission: m.id, stop: m.cur });
   }
-  if (a === 'cancelStop') armed('cx', () => send({ type: 'cancelStop', mission: m.id, stop: m.cur, why: 'customer', by: 'Khách ' + pname(m.stops[m.cur].p) }), render);
+  // Guest problem buttons carry their own mission/stop/table: the server refuses a stop since moved to another table.
+  const stop = () => ({ mission: +b.dataset.m, stop: +b.dataset.s, table: b.dataset.p, by: 'Khách ' + pname(b.dataset.p) + ' (màn ' + ID + ')' });
+  if (a === 'cancelStop') armed(b.dataset.arm, () => request({ type: 'cancelStop', ...stop(), why: 'customer' }, ['Robot sẽ mang món về', 'The robot takes it back'], render), render);
+  if (a === 'returnRequest') { request({ type: 'returnRequest', ...stop(), reason: 'wrong-item' }, ['Đã báo nhân viên — vui lòng chờ', 'Staff notified — please wait'], render, true); render(); }
   if (a === 'cancel') armed(b.dataset.arm, () => send({ type: 'cancel', mission: m.id, by: BY }), render);
   if (a === 'resume') {
     if (r.halt === 'estop') armed('rs', () => send({ type: 'resume', ...base, atRobot: true }), render);
@@ -526,7 +555,7 @@ $('main').addEventListener('click', e => {
   if (a === 'pause') { send({ type: 'pause', ...base }); toast('Đã tạm dừng · Paused'); }
   if (a === 'manual') armed('man', () => send({ type: 'manual', ...base }), render);
   if (a === 'clear') send({ type: 'clear', ...base });
-  if (a === 'dispatch') { send({ type: 'dispatch', ...base, mission: m.id, tables: pick, bus: mode === 'bus' }); pick = []; }
+  if (a === 'dispatch') send({ type: 'dispatch', ...base, mission: m.id, tables: pick, bus: mode === 'bus' });   // pick clears when the robot leaves; kept on a refusal
   if (a === 'unpick') { pick = []; render(); }
   if (a === 'toDish') send({ type: 'dispatch', ...base, mission: m.id, toDish: true });
   if (a === 'release') send({ type: 'dispatch', ...base, mission: m.id, release: true });
@@ -534,27 +563,34 @@ $('main').addEventListener('click', e => {
   if (a === 'payBack') { paying = false; render(); }
   if (a === 'paid') {
     const t = hereTable(r);
-    send({ type: 'call', point: t, what: 'paid', amount: +b.dataset.amt, by: 'Khách ' + pname(t) + ' (màn ' + ID + ')' });
-    toast('Cảm ơn quý khách! Nhân viên sẽ xác nhận · Thank you!'); paying = false; render();
+    send({ type: 'call', point: t, what: 'paid', amount: +b.dataset.amt, by: 'Khách ' + pname(t) + ' (màn ' + ID + ')' });   // the server answers (no success toast before that)
+    paying = false; render();
   }
   if (a === 'order') { ordering = true; cart = {}; otable = null; render(); }
   if (a === 'orderBack') { ordering = false; render(); }
-  if (a === 'orderSend') {
+  if (a === 'orderSend') {   // the cart is emptied only by the server's ok; a refusal keeps it
     const t = hereTable(r) || otable, items = Object.entries(cart).map(([id, qty]) => ({ id, qty }));
-    if (t && items.length) { send({ type: 'order', table: t, items, by: 'Khách ' + pname(t) + ' (màn ' + ID + ')' }); toast('Đã gửi bếp · Sent to the kitchen'); }
-    ordering = false; cart = {}; render();
+    if (t && items.length) request({ type: 'order', table: t, items, by: 'Khách ' + pname(t) + ' (màn ' + ID + ')' }, ['Đã gửi bếp', 'Sent to the kitchen'],
+      rep => { if (rep.ok) { ordering = false; cart = {}; otable = null; } render(); });
+    render();
   }
   if (a === 'guide') { guiding = true; gpick = null; render(); }
   if (a === 'guideBack') { guiding = false; render(); }
-  if (a === 'guideGo' && gpick) { send({ type: 'create', kind: 'guide', to: gpick, ...base, by: 'Khách (màn ' + ID + ')' }); guiding = false; gpick = null; }
-  if (a === 'speed') { send({ type: 'speed', ...base, slow: !r.slow }); toast(r.slow ? 'Đi bình thường · Normal speed' : 'Đi chậm hơn · Slowing down'); }
-  if (a === 'call') { send({ type: 'call', point: b.dataset.p, what: b.dataset.w || 'staff', by: 'Khách ' + pname(b.dataset.p) + ' (màn ' + ID + ')' }); toast('Đã gọi nhân viên · Staff called'); }
+  // Accepted = the robot leaves on the guide (no reply); a refusal keeps the pick.
+  if (a === 'guideGo' && gpick && !gsent) { gsent = request({ type: 'create', kind: 'guide', to: gpick, ...base }, null, () => { gsent = null; render(); }); render(); }
+  if (a === 'speed') send({ type: 'speed', ...base, slow: !r.slow });   // the button label follows the robot's state; no toast
+  if (a === 'call') {
+    const w = b.dataset.w || 'staff';
+    request({ type: 'call', point: b.dataset.p, what: w, by: 'Khách ' + pname(b.dataset.p) + ' (màn ' + ID + ')' }, w === 'bill' ? ['Đã yêu cầu tính tiền', 'Bill requested'] : ['Đã gọi nhân viên', 'Staff called'], render, true);
+    render();
+  }
   if (a === 'staff') toast('Gọi robot từ máy trạm · Call the robot from a station');
 });
 
 connect(msg => {
   if (msg.type === 'state') render();
   if (msg.type === 'event' && msg.robot === ID && msg.robotSound) play(msg.robotSound);
+  if (msg.type === 'event' && msg.reply && !msg.settled && msg.ok === false) toast(refusal(msg), 'warn');   // guide / bus / speed refused
 });
 setInterval(tick, 1000);
 </script>

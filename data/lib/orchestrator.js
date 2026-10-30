@@ -375,9 +375,9 @@ function order(c, d, by, session) {
   if (!P[d.table] || P[d.table].kind !== 'table' || !allowed(c, 'order', session, d.requestId)) return;
   if (c.st.bills.some(b => b.table === d.table && OPEN_BILL.includes(b.status)))   // spec §7.2: never change a total already shown
     return reply(c, session, d.requestId, { ok: false, code: 'billing', text: `${pname(c, d.table)}: Bàn đang tính tiền — nhờ nhân viên vô hiệu hóa phiếu trước khi gọi thêm` });
-  if (!Array.isArray(d.items) || !d.items.length || d.items.length > 30) return;
-  const lines = d.items.map(x => ({ x, it: x && items.find(i => i.id === x.id) }));
-  if (lines.some(({ x, it }) => !it || !Number.isInteger(x.qty) || x.qty < 1 || x.qty > 20)) return;
+  const lines = (Array.isArray(d.items) ? d.items : []).map(x => ({ x, it: x && items.find(i => i.id === x.id) }));
+  if (!lines.length || lines.length > 30 || lines.some(({ x, it }) => !it || !Number.isInteger(x.qty) || x.qty < 1 || x.qty > 20))   // menu changed under an open cart
+    return reply(c, session, d.requestId, { ok: false, code: 'invalid', text: 'Giỏ có món không còn trong thực đơn hoặc số lượng không hợp lệ' });
   const o = { id: ++c.st.orderSeq, table: d.table, items: lines.map(({ x, it }) => ({ id: it.id, qty: x.qty, price: it.price })), t: c.now, status: 'new', by };
   o.total = o.items.reduce((a, i) => a + i.qty * i.price, 0);
   c.st.orders.push(o);

@@ -522,3 +522,13 @@ test('order: off or not ready answers the robot screen and records nothing; acce
   rep = reply(h);
   assert.deepEqual([rep.code, rep.text, h.st.orders.length], ['not-ready', 'Có món giá không hợp lệ', 1]);
 });
+
+test('order with an item gone from the menu or a bad quantity is refused, never dropped silently', () => {
+  const h = v2();
+  h.site.features.order = true;
+  for (const items of [[{id: 'gone', qty: 1}], [{id: 'pho', qty: 0}], [{id: 'pho', qty: 1.5}], [], undefined]) {
+    h.send({type: 'order', table: 'T05', items, requestId: 'o'});
+    const rep = reply(h);
+    assert.deepEqual([rep.ok, rep.code, rep.requestId, typeof rep.text, h.st.orders.length, h.st.alerts.length], [false, 'invalid', 'o', 'string', 0, 0], JSON.stringify(items));
+  }
+});

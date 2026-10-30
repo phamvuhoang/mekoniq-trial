@@ -1,10 +1,13 @@
-// Browser smoke for the setup "Tính năng" tab (spec §8) against the held temp services (docs/testing.md):
-// SMOKE_HOLD=1 node scripts/smoke-review.js, wait for "HOLD for browser tests", then run this. Saves change only that temp site.
+// Browser smoke for the setup "Tính năng" tab (spec §8) and the guest / robot / station screens under that policy (§5, §6, §9)
+// against the held temp services (docs/testing.md): SMOKE_HOLD=1 node scripts/smoke-review.js, wait for "HOLD for browser
+// tests", then run this. Saves and resets change only that temp site; a fake Valetudo robot talks to the temp broker on 1886.
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const assert = require("node:assert/strict");
+const { spawn } = require("node:child_process");
+const path = require("node:path");
 const base = "http://127.0.0.1:1891";
 const errors = [];
-let browser, fixture;
+let browser, fixture, fake;
 
 const expectText = async (page, selector, text) =>
   assert.match(await page.locator(selector).innerText(), new RegExp(text));
@@ -37,12 +40,37 @@ async function save(page) {
   await page.locator("#save").click();
   await page.waitForFunction(() => !saving && !dirty);
 }
-// One fresh context per scenario, each starting from the same saved site: every feature off, no request station.
-async function scenario(name, fn) {
+// Station / robot / guest page, ready once the site and the first state arrived.
+async function app(context, path) {
+  const page = await context.newPage();
+  page.on("pageerror", (e) => errors.push(path + ": " + e.message));
+  await page.goto(base + "/" + path);
+  await page.waitForFunction(() => App.site && App.state);
+  return page;
+}
+// Saves an edit of the live site through setup.html, like a manager changing the config mid-service.
+async function push(context, edit) {
+  const page = await open(context, "setup.html");
+  const site = await page.evaluate(() => structuredClone(App.site));
+  edit(site);
+  await page.evaluate((s) => { D = s; setDirty(true); }, site);
+  await save(page);
+  await page.close();
+}
+// Records every toast the page shows (common.js toast, or the robot screen's own).
+const spyToasts = (page) => page.evaluate(() => { window.toasts = []; const t = window.toast; window.toast = (x, l) => { toasts.push(x); t(x, l); }; });
+const robotOf = (page, id) => page.evaluate((id) => App.state.robots.find((r) => r.id === id), id);
+const fits = (page) => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight);
+// One fresh context per scenario: empty state (reset), then the same saved site — every feature off, no request station —
+// changed by edit(site) for this scenario.
+async function scenario(name, fn, edit = () => {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   try {
     const page = await open(context, "setup.html");
-    await page.evaluate((f) => { D = structuredClone(f); D.rev = App.site.rev; setDirty(true); }, fixture);
+    await page.evaluate(() => send({ type: "reset", by: "smoke" }));
+    const site = structuredClone(fixture);
+    edit(site);
+    await page.evaluate((f) => { D = structuredClone(f); D.rev = App.site.rev; setDirty(true); }, site);
     await save(page);
     await page.close();
     await fn(context);
@@ -65,6 +93,9 @@ async function scenario(name, fn) {
     const kinds = Object.values(fixture.points).map((p) => p.kind);
     assert(kinds.includes("table") && kinds.includes("station") && fixture.menu.items.length, "temp site needs tables, a station and a menu");
     const station = Object.keys(fixture.points).find((k) => fixture.points[k].kind === "station");
+    assert.deepEqual([station, fixture.robots.map((r) => r.id), fixture.menu.items.some((i) => i.id === "pho" && i.cat === fixture.menu.cats[0].id)], ["bar", ["R1", "R2", "R3"], true]);
+    // Fake Valetudo robot on the temp broker (go/set -> idle at the target 4 s later); used by the guide scenario.
+    fake = spawn(process.execPath, [path.join(__dirname, "fake-valetudo.js"), "smoke/guide", "mqtt://127.0.0.1:1886"], { stdio: "ignore" });
 
     await scenario("guest alias, unknown tab and Hệ thống link open the one editor; layout fits", async (context) => {
       const page = await open(context, "setup.html?tab=guest");
@@ -212,8 +243,131 @@ async function scenario(name, fn) {
       await expectText(page, "#strips", "Chưa lưu");
       assert.deepEqual(await page.evaluate(() => [dirty, D.features.pay, toasts.filter((x) => /Đã lưu/.test(x))]), [true, true, []]);
     });
+
+    await scenario("QR guest: bill button alone, toasts only on the reply, return request alerts staff and the trip goes on", async (context) => {
+      const st = await app(context, "station.html?role=bep&name=Smoke");
+      await st.locator('[data-f="t:T01"]').click();   // notes [] -> no chips, free text stays
+      assert.equal(await st.locator("#pvOpts .notes .chip").count(), 0);
+      assert(await st.locator("#note").isVisible());
+      await st.locator('#pvSend [data-act="unpick"]').click();
+      await st.evaluate(() => send({ type: "create", kind: "deliver", from: "kitchen", tables: ["T05"], robot: "R1", by: "Smoke" }));
+      const guest = await app(context, "table.html?t=T05");
+      await guest.setViewportSize({ width: 390, height: 844 });
+      await guest.locator('[data-act="returnRequest"]').waitFor();
+      assert.deepEqual(await guest.locator("[data-call]").evaluateAll((b) => b.map((x) => x.dataset.call + ":" + x.textContent)), ["bill:Yêu cầu tính tiền"]);
+      assert.equal(await guest.locator('[data-act="cancelStop"]').count(), 0);
+      assert.doesNotMatch(await guest.locator("body").innerText(), /Xin hoá đơn/);
+      assert(await guest.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "QR page scrolls sideways at 390 px");
+      if (process.env.SMOKE_SHOTS) await guest.screenshot({ path: `${process.env.SMOKE_SHOTS}/table-request-390.png`, fullPage: true });
+
+      await spyToasts(guest);
+      await guest.evaluate(() => { window.realSend = send; send = (o) => { if (o.type !== "call") realSend(o); }; });   // the call never arrives
+      await guest.locator('[data-call="bill"]').click();
+      assert.deepEqual(await guest.evaluate(() => [$("foot").textContent, document.querySelector('[data-call="bill"]').disabled, toasts]), ["Đang gửi…", true, []]);
+      await guest.waitForFunction(() => toasts.length, null, { timeout: 15000 });
+      assert.deepEqual(await guest.evaluate(() => [toasts, document.querySelector('[data-call="bill"]').disabled]), [["Chưa nhận được xác nhận — vui lòng thử lại"], false]);
+      assert(!(await st.evaluate(() => App.state.alerts.some((a) => a.key.startsWith("call-")))));
+      await guest.evaluate(() => { send = realSend; toasts.length = 0; });
+      await guest.locator('[data-call="bill"]').click();
+      await guest.waitForFunction(() => toasts.length);
+      assert.deepEqual(await guest.evaluate(() => toasts), ["Đã yêu cầu tính tiền — nhân viên sẽ tới"]);
+      await st.waitForFunction(() => App.state.alerts.some((a) => a.key === "call-bill-T05" && a.station === "bar"));
+
+      await guest.locator('[data-act="returnRequest"]').click();
+      await st.waitForFunction(() => App.state.alerts.some((a) => a.key.startsWith("return-")));
+      assert.equal(await guest.evaluate(() => App.state.missions[0].status), "active");
+      await guest.waitForFunction(() => toasts.includes("Đã báo nhân viên — vui lòng chờ"));
+      const strips = await st.locator("#strips").innerText();
+      assert.match(strips, /Trạm khác · Quầy pha chế/);   // call-bill rings at the request station
+      assert.match(strips, /Trạm này · Bếp/);   // return goes to the trip's own station
+      assert.doesNotMatch(strips, /Đã thu tiền/);
+      await st.locator('[data-act="openMission"]').click();
+      assert(await st.locator("#pbody .mission.focus").isVisible());
+      assert(await st.locator('#pbody .mission.focus [data-act="cancelStop"]').count());   // the usual per-table recall
+
+      const m = await st.evaluate(() => App.state.missions[0].id);
+      await guest.evaluate(() => { toasts.length = 0; });
+      await st.evaluate((m) => send({ type: "retarget", mission: m, stop: 1, to: "T06", by: "Smoke" }), m);   // kitchen fixes a mix-up
+      await guest.waitForFunction(() => !document.querySelector('[data-act="returnRequest"]') && toasts.some((x) => /sửa nhầm bàn/.test(x)));
+    }, (s) => { s.features.requestBill = true; s.service.requestStation = "bar"; s.notes = []; });
+
+    await scenario("robot order: off keeps the open cart, back on drops items gone from the menu, only the ok reply empties it", async (context) => {
+      const robot = await app(context, "robot.html?robot=R1");
+      await robot.locator("#start").click();
+      await robot.locator('[data-act="order"]').click();
+      await robot.locator('[data-ot="T05"]').click();
+      for (const id of ["pho", "buncha"]) await robot.locator(`[data-qty="${id}"][data-d="1"]`).click();
+      await push(context, (s) => { s.features.order = false; });
+      await robot.waitForFunction(() => document.querySelector('[data-act="orderSend"]').disabled);
+      assert.match(await robot.locator("#acts").innerText(), /Tạm ngưng gọi món/);
+      assert.deepEqual(await robot.evaluate(() => cart), { pho: 1, buncha: 1 });
+      for (const [width, height] of [[1280, 800], [800, 1280]]) {
+        await robot.setViewportSize({ width, height });
+        await robot.waitForTimeout(200);
+        assert(await fits(robot), `robot order screen overflows at ${width}×${height}`);
+        if (process.env.SMOKE_SHOTS) await robot.screenshot({ path: `${process.env.SMOKE_SHOTS}/robot-order-off-${width}x${height}.png` });
+      }
+      await spyToasts(robot);
+      await push(context, (s) => { s.features.order = true; s.menu.items = s.menu.items.filter((i) => i.id !== "buncha"); });
+      await robot.waitForFunction(() => !document.querySelector('[data-act="orderSend"]').disabled);
+      assert.deepEqual(await robot.evaluate(() => [cart, toasts]), [{ pho: 1 }, ["Món không còn trong thực đơn đã được bỏ khỏi giỏ · Items no longer on the menu were removed"]]);
+      await robot.locator('[data-act="orderSend"]').click();
+      await robot.waitForFunction(() => !ordering);
+      assert.deepEqual(await robot.evaluate(() => [cart, toasts.at(-1), App.state.orders.map((o) => o.table + ":" + o.items.map((i) => i.id))]),
+        [{}, "Đã gửi bếp · Sent to the kitchen", ["T05:pho"]]);
+    }, (s) => { s.features.order = true; });
+
+    await scenario("guide: staff pick and confirm; slow button only on the simulator; guide off mid-trip still finishes; bus off hides robot shortcuts", async (context) => {
+      const sendAs = (page, d) => page.evaluate((d) => send({ by: "Smoke", ...d }), d);
+      const r1 = await app(context, "robot.html?robot=R1"), r2 = await app(context, "robot.html?robot=R2");
+      for (const p of [r1, r2]) await p.locator("#start").click();
+      await sendAs(r1, { type: "create", kind: "summon", to: "bar", robot: "R1" });
+      await sendAs(r1, { type: "create", kind: "summon", to: "kitchen", robot: "R2" });
+      for (const [p, id] of [[r1, "R1"], [r2, "R2"]])
+        await p.waitForFunction((id) => App.state.robots.find((r) => r.id === id).phase === "atStop", id, { timeout: 30000 });
+      assert.deepEqual(await r1.evaluate(() => [...document.querySelectorAll("[data-mode]")].map((b) => b.dataset.mode)), ["deliver"]);
+      assert.equal(await r1.locator('[data-act="toDish"]').count(), 0);
+
+      const lead = async (p, id, table) => {
+        assert.match(await p.locator('[data-act="guide"]').innerText(), /Nhân viên: dẫn khách tới bàn/);
+        await p.locator('[data-act="guide"]').click();
+        assert(await p.locator('[data-act="guideGo"]').isDisabled());
+        assert.equal(await p.locator("#body .tt .st").count(), 0);   // no table status: nothing claims a table is free
+        await p.locator(`[data-g="${table}"]`).click();
+        assert.equal(await robotOf(p, id).then((r) => r.phase), "atStop", "a pick alone never moves the robot");
+        await p.locator('[data-act="guideGo"]').click();
+        await p.waitForFunction((id) => { const r = App.state.robots.find((x) => x.id === id), m = missionOf(r); return r.phase === "toStop" && m && m.kind === "guide"; }, id);
+        await p.waitForFunction(() => /^Dẫn khách →/.test($("bar").textContent));
+      };
+      await lead(r2, "R2", "T05");
+      assert.equal(await r2.locator('[data-act="speed"]').count(), 0);   // Valetudo: no slow mode
+
+      await lead(r1, "R1", "T06");
+      assert.equal(await r1.locator('[data-act="speed"]').count(), 1);
+      await spyToasts(r1);
+      await r1.locator('[data-act="speed"]').click();
+      await r1.waitForFunction(() => App.state.robots.find((r) => r.id === "R1").slow > 0 && /Đi bình thường/.test(document.querySelector('[data-act="speed"]').textContent));
+      const cancel = await r1.locator('[data-arm="cg"]').elementHandle();
+      await r1.waitForTimeout(1500);   // ETA ticks: the cancel button must not be re-created
+      assert(await cancel.evaluate((e) => e.isConnected));
+      await r1.locator('[data-act="speed"]').click();
+      await r1.waitForFunction(() => !App.state.robots.find((r) => r.id === "R1").slow);
+      assert.deepEqual(await r1.evaluate(() => toasts), []);
+
+      await push(context, (s) => { s.features.guide = false; });
+      await r1.waitForFunction(() => !feat("guide"));
+      assert.equal(await r1.locator('[data-act="speed"]').count(), 1);
+      assert.equal(await r1.locator('[data-arm="cg"]').count(), 1);
+      await r1.waitForFunction(() => { const r = App.state.robots.find((x) => x.id === "R1"); return r.phase === "atStop" && missionOf(r).kind === "guide"; }, null, { timeout: 60000 });
+      await r1.locator('[data-act="confirm"]').click();
+      await r1.waitForFunction(() => App.state.history.some((m) => m.kind === "guide" && m.robot === "R1" && m.status === "done"));
+    }, (s) => {
+      s.features.guide = true;
+      s.robots[1] = { ...s.robots[1], driver: "valetudo", valetudo: { topic: "smoke/guide", points: { kitchen: { x: 2000, y: 1000 }, T05: { x: 3000, y: 1400 } } } };
+    });
   } finally {
     await browser.close();
+    if (fake) fake.kill();
   }
   assert.deepEqual(errors, []);
   console.log("FEATURE_POLICY_BROWSER_OK");

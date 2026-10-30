@@ -159,6 +159,7 @@
   /* Missions */
   .mission { border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin-bottom: 10px; }
   .mission.urgent { border-color: var(--accent); border-width: 2px; }
+  .mission.focus { border: 2px solid var(--deep); box-shadow: 0 0 0 3px var(--mint); }
   .mrow { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
   .mrow > b { font-weight: 900; color: var(--deep); }
   .stops { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
@@ -261,7 +262,7 @@
 </dialog>
 <div id="offline" hidden>Mất kết nối tới hệ thống điều phối — đang kết nối lại…</div>
 
-<script src="transport.js"></script><script src="common.js"></script><script src="vmap.js"></script>
+<script src="lib/feature-policy.js"></script><script src="transport.js"></script><script src="common.js"></script><script src="vmap.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -335,8 +336,8 @@ setView(['desk', 'mon'].includes(qs.get('view')) ? qs.get('view') : me && me.rol
 
 // ---- Desk: pick robot + task + tables, check the order preview, one big send button ----
 const F = { tab: 'deliver', from: 'kitchen', tables: [], table: null, to: null, robot: 'any', urgent: false, chips: [], free: '', retarget: null };
-const NOTES_DEF = ['Không hành', 'Ít cay', 'Món nóng', 'Thêm chén'];   // = lib/site.js NOTES; sites saved before phase 2 have no notes until re-saved
-const notes = () => App.site.notes || NOTES_DEF;
+const NOTES_DEF = ['Không hành', 'Ít cay', 'Món nóng', 'Thêm chén'];   // = lib/site.js NOTES; a live site saved before phase 2 (migrated per message) has none until re-saved
+const notes = () => App.site.notes || NOTES_DEF;   // [] = no chips on purpose; the free-text note stays
 // Send / Bỏ chọn turn the card into recall mode with its big button at the same spot: ignore that button for 1 s after.
 let sentAt = 0;
 const tableIds = () => Object.keys(App.site.points).filter(k => App.site.points[k].kind === 'table');
@@ -601,7 +602,7 @@ function missionHTML(m) {
   }).join('');
   const lockedBus = m.kind === 'bus' && m.loaded;
   const k = 'cm-' + m.id;
-  return `<div class="mission ${m.urgent ? 'urgent' : ''}">
+  return `<div class="mission ${m.urgent ? 'urgent' : ''}${m.id === focusM ? ' focus' : ''}">
     <div class="mrow"><b>${esc(m.label)}</b>${m.urgent ? '<span class="pill warn">GẤP</span>' : ''}</div>
     <div class="mrow small"><span class="muted">${esc(m.by)} · <span data-ago="${m.createdAt}"></span></span><span class="pill ${tone}">${m.robot ? m.robot + ' · ' : ''}${esc(stText)}</span></div>
     ${m.note ? `<div class="small">📝 ${esc(m.note)}</div>` : ''}
@@ -644,13 +645,22 @@ function renderOps() {
     [`${k.cancelledCustomer}/${k.cancelledStaff}/${k.timeout}`, 'Huỷ KH/NV/giờ', 'Huỷ: khách/nhân viên/quá giờ'],
   ];
   setHTML($('kpi'), tiles.map(([v, l, full]) => `<div class="kpi" title="${full}"><b>${v}</b><span>${l}</span></div>`).join(''));
-  // Blocked robot (alert key blk-<robot>): the strip also offers "Đã dọn lối đi" -> the usual clear; not for noroute (same key), clearing can't fix it.
-  setHTML($('strips'), strip(App.state.alerts, a => { const r = App.state.robots.find(x => a.key === 'blk-' + x.id && x.why !== 'noroute');
-    return r ? `<button class="btn sm dark" data-act="clear" data-r="${r.id}">Đã dọn lối đi</button>` : ''; }));
+  setHTML($('strips'), strip(App.state.alerts, alertExtra));
+}
+// Guest requests (call-*, return-*) name the station that answers them; every station still sees them, marked.
+// return-*: a shortcut to that trip in Giám sát → Nhiệm vụ, where the usual recall / per-table cancel live.
+// Blocked robot (alert key blk-<robot>): "Đã dọn lối đi" -> the usual clear; not for noroute (same key), clearing can't fix it.
+function alertExtra(a) {
+  const home = role().home, r = App.state.robots.find(x => a.key === 'blk-' + x.id && x.why !== 'noroute');
+  const tag = !('station' in a) ? '' : !a.station ? '<span class="pill">Chưa có trạm nhận</span>'
+    : `<span class="pill${a.station === home ? ' go' : ''}">${home ? (a.station === home ? 'Trạm này · ' : 'Trạm khác · ') : 'Trạm nhận · '}${esc(pname(a.station))}</span>`;
+  const m = a.ref && App.state.missions.find(x => x.id === a.ref.mission);
+  return tag + (m ? `<button class="btn sm dark" data-act="openMission" data-m="${m.id}">Mở chuyến #${m.id}</button>` : '')
+    + (r ? `<button class="btn sm dark" data-act="clear" data-r="${r.id}">Đã dọn lối đi</button>` : '');
 }
 
 // ---- Side panel: one tab at a time; render() fills only the active one ----
-let PTAB = 'fleet', SIMR = null;
+let PTAB = 'fleet', SIMR = null, focusM = null;   // focusM: trip opened from a return-* alert
 const PTABS = { fleet: 'Đội robot', missions: 'Nhiệm vụ', log: 'Nhật ký', sim: 'Mô phỏng' };
 const SIMS = [['block', 'Vật cản trước robot', 'Đặt ghế trên lối đi ngay trước robot'], ['clear', 'Gỡ vật cản quanh robot', ''],
   ['offline', 'Mất kết nối', ''], ['online', 'Kết nối lại', ''], ['lowbat', 'Pin yếu', '']];
@@ -707,6 +717,11 @@ document.body.addEventListener('click', e => {
   if (a === 'estop') send({ type: 'estop', robot: SIMR, by: by() });
   if (a === 'obClear') send({ type: 'obstacle', remove: 'all', by: by() });
   if (a === 'reset') armed('reset', () => send({ type: 'reset', by: by() }), renderPanel);
+  if (a === 'openMission') {
+    focusM = m; PTAB = 'missions'; setView('mon'); renderPanel();
+    const el = $('pbody').querySelector('.mission.focus');
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }
 });
 
 // Station hears cues for its own location; alerts go to everyone.
@@ -720,7 +735,7 @@ connect(m => {
     return;
   }
   if (m.type === 'state' || m.type === 'map') render();
-  if (m.type === 'event' && m.reply) toast(m.text, 'warn');   // refusal sent to this screen only
+  if (m.type === 'event' && m.reply && !m.settled && m.ok !== true) toast(m.text, 'warn');   // refusal sent to this screen only (retarget has no ok field)
   if (m.type === 'event' && m.stationSound && hears(m)) {
     play(m.stationSound);
     toast(m.text, m.stationSound === 'alert' ? 'error' : m.stationSound === 'cancelled' ? 'warn' : 'info');
