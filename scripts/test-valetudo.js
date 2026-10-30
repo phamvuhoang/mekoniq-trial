@@ -576,3 +576,59 @@ const PTS = SITE.robots[0].valetudo.points;
   assert.strictEqual(V.health(st).robots.R1.battery, 50);                         // still ingested
   console.log('✓ health: retained redelivery does not count as heard from');
 }
+
+{
+  const st = V.init(SITE), now = 1e12;
+  const H = (i, t = now) => V.handle(st, SITE, i, t);
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'idle' });
+  H({ cmd: 'goto', robot: 'R1', to: 'kitchen', token: 42 });
+  H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'moving' }, now + 2000);
+  const r = H({ cmd: 'mqtt', topic: 'valetudo/Bot/StatusStateAttribute/status', payload: 'idle', retain: true }, now + 4000);
+  assert(!r.events.some(e => e.event === 'arrived'));
+  assert.strictEqual(st.robots.R1.status, 'moving');
+  assert.strictEqual(st.robots.R1.goal.token, 42);
+  console.log('✓ retained status cannot finish an active trip');
+}
+{
+  const st = V.init(SITE), now = 1e12;
+  V.handle(st,SITE,{cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/status',payload:'idle'},now);
+  V.handle(st,SITE,{cmd:'goto',robot:'R1',to:'D1',token:7},now);
+  V.handle(st,SITE,{cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/status',payload:'returning'},now+2000);
+  st.boot = 'previous-process';
+  V.handle(st,SITE,{cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/status',payload:'docked',retain:true},now+10000);
+  const r=V.handle(st,SITE,{cmd:'tick'},now+21000);
+  assert(r.events.some(e=>e.event==='arrived'&&e.token===7));
+  assert.equal(r.mqtt.length,0);
+  console.log('✓ retained docked snapshot recovers a trip completed during downtime');
+}
+{
+  const st=V.init(SITE),now=1e12;
+  const H=(input,t=now)=>V.handle(st,SITE,input,t);
+  H({cmd:'mqtt',topic:'valetudo/Bot/$state',payload:'ready'});
+  H({cmd:'goto',robot:'R1',to:'kitchen',token:8});
+  H({cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/error_description',payload:'Wheel stuck'});
+  assert(st.robots.R1.blocked);
+  st.boot='old';
+  H({cmd:'mqtt',topic:'valetudo/Bot/$state',payload:'ready',retain:true},now+10000);
+  H({cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/error_description',payload:'No error',retain:true},now+10000);
+  H({cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/status',payload:'idle',retain:true},now+10000);
+  H({cmd:'tick'},now+21000);
+  assert.equal(st.robots.R1.blocked,false);
+  assert(st.robots.R1.waiting);
+  console.log('✓ fault cleared during downtime recovers a blocked trip');
+}
+{
+  const st=V.init(SITE),now=1e12;
+  const H=(input,t=now)=>V.handle(st,SITE,input,t);
+  H({cmd:'goto',robot:'R1',to:'kitchen',token:1});
+  H({cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/status',payload:'moving'},now+2000);
+  H({cmd:'goto',robot:'R1',to:'T01',token:2},now+3000);
+  assert(st.robots.R1.pending);st.boot='old';
+  H({cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/status',payload:'moving',retain:true},now+10000);
+  const r=H({cmd:'tick'},now+21000);
+  assert(st.robots.R1.pending);
+  assert(r.mqtt.some(m=>m.payload==='STOP'));
+  const next=H({cmd:'mqtt',topic:'valetudo/Bot/StatusStateAttribute/status',payload:'idle'},now+22000);
+  assert(next.mqtt.some(m=>m.topic.endsWith('/go/set')&&JSON.parse(m.payload).coordinates.x===PTS.T01.x));
+  console.log('✓ reconnect preserves pending retarget STOP/send sequence');
+}

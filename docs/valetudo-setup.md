@@ -48,7 +48,7 @@ Mở `http://<IP điện thoại>:1880/setup.html` (hoặc từ trang chủ → 
    - **Dùng vị trí robot** (chính xác nhất): lái robot tới đúng chỗ cần dừng bằng app Valetudo (hoặc bê robot tới), đợi chấm robot trên bản đồ nhảy tới đó, chọn điểm trong danh sách → bấm **Dùng vị trí robot**.
    - Chấm lên bản đồ: chọn điểm trong danh sách → chạm lên bản đồ. Chỉnh ±10 cm bằng các mũi tên.
    Bấm **Chạy thử tới đây** (robot đang rảnh) để xem robot có tới đúng chỗ không. Dock không cần định vị — robot tự về sạc (`HOME`).
-4. **Lưu**. Có hiệu lực ngay, không cần khởi động lại. Trang nào mở sẵn cũng tự cập nhật.
+4. **Lưu**. Có hiệu lực ngay, không cần khởi động lại. Trang nào mở sẵn cũng tự cập nhật. Node-RED đăng ký topic mới để nhận ngay trạng thái, Wi-Fi và bản đồ retained (nếu robot đã gửi). Khi đổi topic, bản đồ cũ bị loại bỏ; chờ bản đồ mới rồi định vị lại các điểm cho robot này.
 
 Điểm dừng tốt: nằm trên lối đi, cạnh mép bàn 30–50 cm về phía khách dễ lấy; không chấm vào giữa bàn hay chỗ ghế kéo ra.
 Robot **vẽ lại bản đồ** (reset map) thì mọi toạ độ sai → bật *persistent map* trong Valetudo. Trang Cấu hình cảnh báo vàng khi thấy kích thước bản đồ đổi.
@@ -100,7 +100,7 @@ e. **Dừng / chạy tiếp / dừng khẩn** khi robot đang chạy: robot ph�
 
 | Hiện tượng | Nguyên nhân / cách xử lý |
 |---|---|
-| "Broker MQTT trong máy không chạy" (dải đỏ trên trạm) | Mosquitto trên điện thoại đã tắt; mọi robot thật mất điều khiển. Termux: `mosquitto -c ~/robot/mosquitto.conf -d` (hoặc chạy lại install). Broker chạy lại là dải tự tắt. |
+| "Broker MQTT trong máy không chạy" (dải đỏ trên trạm) | Chỉ cảnh báo khi cấu hình đã lưu có robot Valetudo. Mosquitto trên điện thoại đã tắt; mọi robot thật mất điều khiển. Site chỉ mô phỏng không báo lỗi broker; xoá robot thật cuối cùng sẽ xoá cảnh báo cũ. Termux: `mosquitto -c ~/robot/mosquitto.conf -d` (hoặc chạy lại install). Broker chạy lại là dải tự tắt. |
 | "IP điện thoại đã đổi từ … sang …" | Router cấp IP mới: robot và mã QR vẫn trỏ IP cũ. Valetudo → Connectivity → MQTT → Host = IP mới; mở lại trang trên tablet; in lại QR; rồi trang Cấu hình → **Hệ thống** → **Đã cập nhật robot và QR**. Gốc: đặt IP cố định cho điện thoại trên router (DHCP reservation). |
 | "R1 mất kết nối" | Robot báo `$state lost` hoặc chưa gửi gì: kiểm tra bậc 4a, IP điện thoại, robot còn bật Wi-Fi. |
 | "R1 không có lộ trình tới …" | Điểm đó chưa được định vị cho R1. Trang Cấu hình → Điểm & bản đồ → định vị → Lưu (không cần khởi động lại). |

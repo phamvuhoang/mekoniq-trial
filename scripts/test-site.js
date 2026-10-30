@@ -30,6 +30,11 @@ const has = (list, word) => assert.ok(list.some(e => e.includes(word)), `expecte
   console.log('✓ numeric strings coerced');
 }
 {
+  has(errs(s => { s.timing.chargedBattery = 150; }), 'chargedBattery');   // a robot sent to charge would never come back
+  has(errs(s => { s.timing.lowBattery = 85; }), 'Pin yếu');
+  console.log('✓ battery thresholds');
+}
+{
   const s = clone(seed); s.points.T01 = { name: 'Bàn 01', kind: 'table' };
   s.robots[0].valetudo.points.T01 = { x: 12.7, y: 3 };
   assert.deepStrictEqual(S.normalize(s, seed).site.robots[0].valetudo.points.T01, { x: 13, y: 3 });
