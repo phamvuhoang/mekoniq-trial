@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Sổ tay MEKONIQ Serve · bản đầy đủ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;800;900&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: dark app-bar band like the product, then a single reading column; screenshots break out wider in 2-up grids. */
+:root {
+  --bg: #eef3f0; --surface: #ffffff; --ink: #071d21; --muted: #4f6b68; --line: #d9e5de;
+  --deep: #071d21; --on-deep: #e8f1ee; --sub-deep: #9bb6b0;
+  --mint: #b9fb75; --green: #1f7a5c; --iq: #63dcc5; --accent: #ff9f68; --warn-ink: #b5541a; --danger: #d93d42;
+  --pill-ok: #e3f6d0; --pill-warn: #ffe4cc; --pill-danger: #fbd9da;
+  --code-bg: #071d21; --code-fg: #d9f3ee;
+  --font: 'Be Vietnam Pro', system-ui, -apple-system, Roboto, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #061619; --surface: #0d272c; --ink: #e8f1ee; --muted: #9bb6b0; --line: #1e3c40;
+  --deep: #031013; --green: #8fe3b3; --warn-ink: #ffb98f;
+  --pill-ok: #1d3a22; --pill-warn: #3d2614; --pill-danger: #3f1b1d;
+  --code-bg: #020c0e; --code-fg: #d9f3ee; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #061619; --surface: #0d272c; --ink: #e8f1ee; --muted: #9bb6b0; --line: #1e3c40;
+  --deep: #031013; --green: #8fe3b3; --warn-ink: #ffb98f;
+  --pill-ok: #1d3a22; --pill-warn: #3d2614; --pill-danger: #3f1b1d;
+  --code-bg: #020c0e; --code-fg: #d9f3ee; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { margin: 0; padding-top: env(safe-area-inset-top,0px); padding-bottom: env(safe-area-inset-bottom,0px); }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.6; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--deep); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.read { max-width: 760px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.2; margin: 0; }
+p { margin: 0; }
+a { color: inherit; }
+:focus-visible { outline: 3px solid var(--iq); outline-offset: 2px; border-radius: 6px; }
+
+/* App bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 9; background: var(--deep); color: var(--on-deep); }
+.bar .wrap { display: flex; align-items: center; gap: 14px; padding-block: 10px; flex-wrap: wrap; }
+.bar img { width: 40px; height: 40px; background: #fff; border-radius: 11px; padding: 4px; }
+.bar .t b { display: block; font-weight: 900; font-size: 17px; }
+.bar .t small { display: block; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--sub-deep); font-weight: 600; }
+.seg { display: flex; gap: 4px; background: rgba(255,255,255,.08); padding: 4px; border-radius: 12px; margin-left: auto; flex-wrap: wrap; }
+.seg a { text-decoration: none; padding: 7px 14px; border-radius: 9px; font-weight: 800; font-size: 14px; color: var(--on-deep); }
+.seg a:hover { background: rgba(255,255,255,.08); }
+.seg a.on { background: var(--mint); color: #071d21; }
+
+/* Hero */
+.hero { background: var(--deep); color: var(--on-deep); padding-block: 40px 48px; }
+.eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 800; color: var(--green); }
+.hero .eyebrow { color: var(--mint); }
+.hero h1 { font-size: clamp(34px, 6vw, 56px); font-weight: 900; margin-top: 10px; }
+.hero h1 em { font-style: normal; color: var(--mint); }
+.hero p { color: var(--sub-deep); max-width: 640px; margin-top: 14px; font-size: 17px; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.facts span { border: 1px solid #2c4c50; border-radius: 999px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+
+/* Sections */
+section { padding-block: 56px 8px; scroll-margin-top: 70px; }
+section > .wrap > h2 { font-size: clamp(26px, 4vw, 36px); font-weight: 900; margin-top: 6px; }
+.lede { color: var(--muted); margin-top: 10px; font-size: 17px; }
+h3 { font-size: 21px; font-weight: 800; margin-top: 40px; }
+h3 + p, h3 + ul, h3 + ol { margin-top: 10px; }
+ul, ol { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 6px; }
+li::marker { color: var(--muted); }
+b, strong { font-weight: 800; }
+.muted { color: var(--muted); }
+
+/* Architecture diagram */
+.arch { display: grid; grid-template-columns: 1fr auto 1.2fr auto 1fr; gap: 10px; align-items: center; margin-top: 24px; }
+.node { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 14px 16px; min-width: 0; }
+.node b { display: block; font-size: 15px; }
+.node small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; margin-top: 4px; }
+.node.core { background: var(--deep); color: var(--on-deep); border-color: var(--deep); }
+.node.core small { color: var(--sub-deep); }
+.node .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.node .tags code { background: rgba(185,251,117,.14); color: var(--mint); }
+.wire { text-align: center; font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.3; }
+.wire i { display: block; font-style: normal; font-size: 20px; color: var(--green); }
+
+/* Figures */
+.shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin-top: 22px; }
+.shots.three { grid-template-columns: 1.6fr 1fr 1fr; align-items: start; }
+figure { margin: 0; min-width: 0; }
+figure a { display: block; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
+figure img { display: block; width: 100%; height: auto; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+figcaption b { color: var(--ink); }
+
+/* Trip sequence */
+.trip { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 22px; counter-reset: s; }
+.trip li { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; font-size: 14px; line-height: 1.45; counter-increment: s; }
+.trip li::before { content: counter(s); display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--mint); color: #071d21; font-weight: 900; font-size: 13px; margin-bottom: 6px; }
+.trip b { display: block; }
+
+/* Code */
+code { font-family: var(--mono); font-size: .88em; background: var(--pill-ok); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+.cmd { position: relative; margin-top: 12px; }
+.cmd pre { margin: 0; background: var(--code-bg); color: var(--code-fg); border-radius: 14px; padding: 14px 16px; padding-right: 74px; overflow-x: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.6; }
+.cmd pre .c { color: #7f9c97; }
+.cmd button { position: absolute; top: 8px; right: 8px; font: 800 12px var(--font); border: 0; border-radius: 999px; padding: 6px 12px; background: var(--mint); color: #071d21; cursor: pointer; }
+.cmd .lbl { font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+
+/* Install paths */
+.paths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px; min-width: 0; }
+.card h4 { margin: 0; font-size: 17px; font-weight: 800; }
+.card .when { font-size: 13px; color: var(--muted); margin-top: 2px; }
+.card ol { font-size: 15px; }
+
+.note { margin-top: 18px; border-radius: 14px; padding: 12px 16px; background: var(--pill-warn); color: var(--ink); font-size: 15px; }
+.note b { color: var(--warn-ink); }
+.note.safe { background: var(--pill-danger); }
+.note.safe b { color: var(--danger); }
+
+/* Tables */
+.tw { overflow-x: auto; margin-top: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 620px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-top: 1px solid var(--line); }
+thead th { border-top: 0; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 800; background: var(--bg); }
+td:first-child { font-weight: 700; width: 30%; }
+.ports td:first-child { width: auto; font-family: var(--mono); font-weight: 500; }
+/* IP input: fills every [data-t] template on the page ({ip}, {port}) */
+.ipbox { margin-top: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 18px; align-items: center; }
+.ipbox label b { display: block; font-size: 16px; }
+.ipbox label small { display: block; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.ipin { display: flex; align-items: center; gap: 4px; font: 500 18px var(--mono); }
+.ipin input { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-height: 48px; width: 17ch; }
+.ipin #port { width: 6.5ch; }
+.ipin input:focus { outline: 3px solid var(--iq); outline-offset: 1px; }
+.ipin input[aria-invalid="true"] { border-color: var(--danger); }
+.ipmsg { grid-column: 1 / -1; font-size: 13px; color: var(--muted); }
+.ipmsg.bad { color: var(--danger); font-weight: 700; }
+.addr { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+.addr a, .addr span { overflow-wrap: anywhere; }
+.addr a { color: var(--green); font-weight: 500; }
+.ph { color: var(--muted); }
+.cp { flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer; padding: 0; }
+.cp:hover { border-color: var(--green); color: var(--green); }
+.cp svg { width: 16px; height: 16px; }
+.cp.ok { background: var(--mint); border-color: var(--mint); color: #071d21; }
+@media (max-width: 860px) { .ipbox { grid-template-columns: 1fr; } }
+.lv { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; padding: 1px 8px; border-radius: 999px; margin-right: 4px; }
+.lv.err { background: var(--pill-danger); color: var(--danger); }
+.lv.warn { background: var(--pill-warn); color: var(--warn-ink); }
+.lv.info { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+
+/* Troubleshooting */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.filters button { font: 700 14px var(--font); border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--deep); color: var(--mint); border-color: var(--deep); }
+.issues { display: grid; gap: 10px; margin-top: 16px; }
+.issue { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 6px 22px; }
+.issue .sym { font-weight: 800; }
+.issue .tag { display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin-bottom: 6px; }
+.tag.install { background: var(--pill-warn); color: var(--warn-ink); }
+.tag.robot { background: var(--pill-ok); color: var(--green); }
+.tag.run { background: var(--pill-danger); color: var(--danger); }
+.tag.bill { background: rgba(255,159,104,.22); color: var(--warn-ink); }
+.tag.tablet { background: rgba(99,220,197,.18); color: var(--green); }
+.issue .fix { font-size: 15px; }
+.issue .fix p + p { margin-top: 6px; }
+.issue .src { grid-column: 2; font-size: 12px; color: var(--muted); }
+.issue .src code { background: transparent; padding: 0; }
+
+footer { margin-top: 64px; padding-block: 28px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+
+@media (max-width: 860px) {
+  .arch { grid-template-columns: 1fr; }
+  .wire i { transform: rotate(90deg); }
+  .shots, .shots.three, .paths { grid-template-columns: 1fr; }
+  .trip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .issue { grid-template-columns: 1fr; }
+  .issue .src { grid-column: 1; }
+  .seg { margin-left: 0; }
+}
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head><body>
+<header class="bar">
+  <div class="wrap">
+    <img src="img/logo.svg" alt="MEKONIQ">
+    <div class="t"><b>MEKONIQ Serve S1</b><small>Sổ tay vận hành · bản đầy đủ</small></div>
+    <nav class="seg" aria-label="Mục">
+      <a href="#chuc-nang">Chức năng</a>
+      <a href="#tinh-nang">Tính năng</a>
+      <a href="#tinh-tien">Tính tiền</a>
+      <a href="#cai-dat">Cài đặt</a>
+      <a href="#su-co">Xử lý sự cố</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Robot giao món và phục vụ khách · sau phase 2 · bản <code>main</code> 31/10/2026</div>
+    <h1>Bếp chạm một lần, <em>robot mang món tới bàn và phục vụ khách.</em></h1>
+    <p>Một điện thoại Android chạy máy chủ trong nhà hàng, các tablet mở màn hình qua Wi-Fi, robot Valetudo nhận lệnh qua MQTT. Ngoài giao món và thu dọn, robot còn nhận gọi món, hiện mã VietQR, dẫn khách tới bàn, và khách gọi nhân viên từ mã QR ở bàn. Mọi tính năng cho khách tắt sẵn, nhà hàng bật từng mục khi sẵn sàng.</p>
+    <div class="facts">
+      <span>Node-RED 5.0.8 trên Termux</span><span>Mosquitto MQTT</span><span>Tablet 1280×800 · xoay dọc 800×1280</span><span>Song ngữ VI/EN cho khách</span><span>Tính tiền do nhân viên xác nhận</span>
+    </div>
+  </div>
+</div>
+
+<main>
+<section id="chuc-nang">
+  <div class="wrap">
+    <div class="eyebrow">Phần 1</div>
+    <h2>Chức năng</h2>
+    <p class="lede read">Mỗi màn hình là một trang web. Nhân viên mở đúng trang trên tablet của mình; trạng thái đồng bộ tức thì giữa tất cả các máy. Ảnh chụp từ bản demo trên trình duyệt, cấu hình demo bật mọi tính năng.</p>
+
+    <div class="arch" role="img" aria-label="Sơ đồ: tablet trạm, tablet robot và điện thoại khách nối Wi-Fi tới điện thoại máy chủ, điện thoại nối MQTT tới robot Valetudo">
+      <div class="node"><b>Tablet nhân viên & khách</b><small>Chrome: màn trạm bếp/bar, màn trên robot, trang QR ở bàn trên điện thoại khách, trang cấu hình.</small></div>
+      <div class="wire"><i>⇄</i>Wi-Fi<br>cổng 1880</div>
+      <div class="node core"><b>Điện thoại máy chủ (Android)</b><small>Termux chạy Node-RED (điều phối, đơn gọi món, phiếu tính tiền, mô phỏng, lưu cấu hình) và Mosquitto. Tự khởi động khi bật máy.</small>
+        <div class="tags"><code>~/robot</code><code>:1880</code><code>:1883</code><code>:1884</code></div></div>
+      <div class="wire"><i>⇄</i>MQTT<br>có mật khẩu</div>
+      <div class="node"><b>Robot Valetudo</b><small>Báo pin, trạng thái, bản đồ; nhận lệnh đi tới toạ độ, dừng, về sạc. Không chỉnh được tốc độ.</small></div>
+    </div>
+
+    <h3>Một chuyến giao món</h3>
+    <ol class="trip">
+      <li><b>Bếp chọn bàn</b>Chạm Bàn 05, 07, ghi chú nhanh, bấm Gọi robot.</li>
+      <li><b>Robot tới bếp</b>Màn robot hiện khay nào cho bàn nào; bếp bấm Đã xếp xong.</li>
+      <li><b>Đi giao</b>Màn robot hiện đích thật to và lộ trình còn lại. Gửi nhầm bàn thì bếp bấm Đổi bàn.</li>
+      <li><b>Khách nhận</b>Khay đúng bàn sáng lên; khách bấm Đã nhận món, hoặc Báo nhầm món / Cần hỗ trợ.</li>
+      <li><b>Về</b>Hết bàn, robot về sạc hoặc nhận lệnh kế tiếp trong hàng chờ.</li>
+    </ol>
+
+    <h3>Máy trạm nhân viên: Điều phối</h3>
+    <p class="read">Ba cột trên một màn: robot và hàng chờ bên trái, lưới bàn ở giữa, thẻ <b>Lệnh sẽ gửi</b> cố định bên phải. Vai trò (Bếp, Quầy pha chế, Dọn bàn, Quản lý ca) chọn trên thanh trên cùng. Bên phải thanh có ba chế độ: <b>Điều phối</b>, <b>Giám sát</b>, <b>Tính tiền</b>.</p>
+    <div class="shots">
+      <figure><a href="img/station-desk.jpg" target="_blank" rel="noopener"><img src="img/station-desk.jpg" alt="Màn Điều phối: đã chọn Bàn 05 và 07, ghi chú Ít cay, thẻ Lệnh sẽ gửi bên phải" loading="lazy"></a>
+        <figcaption><b>Chọn bàn.</b> Mỗi bàn chiếm một khay (K1–K4). Ghi chú nhanh lấy từ Cấu hình (mặc định Không hành, Ít cay, Món nóng, Thêm chén); ô “Khác…” cho ghi chú tự do; “Ưu tiên gấp” đưa lệnh lên đầu hàng chờ.</figcaption></figure>
+      <figure><a href="img/station-retarget.jpg" target="_blank" rel="noopener"><img src="img/station-retarget.jpg" alt="Màn Điều phối ở chế độ đổi bàn: gợi ý Chạm bàn mới cho Bàn 05, bàn đang có trong chuyến bị mờ" loading="lazy"></a>
+        <figcaption><b>Đổi bàn khi robot đang đi.</b> Hàng chờ và thẻ <b>Lệnh gần nhất</b> có nút <b>Đổi 05</b>, <b>Đổi 07</b>. Chạm rồi chạm bàn đúng; robot báo “Đổi đích → Bàn 06” và đi thẳng tới đó. Thẻ còn nút <b>Thu hồi robot</b> (chạm 2 lần).</figcaption></figure>
+    </div>
+    <ul class="read">
+      <li><b>Thu dọn bàn</b>: chọn một bàn, robot tới lấy chén đĩa rồi mang về khu rửa.</li>
+      <li><b>Gọi robot tới</b>: gọi robot rảnh tới một khu hoặc một bàn (để khách gọi món, thanh toán, hoặc dẫn khách).</li>
+      <li>Đổi bàn bị từ chối khi robot đã tới bàn (dùng Trả lại bếp) hoặc bàn mới đã có trong chuyến; trạm nhận lý do. Trang QR của bàn cũ báo “bếp đã sửa nhầm bàn”.</li>
+    </ul>
+
+    <h3>Cảnh báo trên trạm</h3>
+    <figure style="margin-top:16px"><a href="img/station-alerts.jpg" target="_blank" rel="noopener"><img src="img/station-alerts.jpg" alt="Màn trạm Bếp với 4 dải cảnh báo: Bàn 09 gọi món hai dòng, Bàn 03 yêu cầu tính tiền có nút Mở tính tiền, Bàn 07 gọi nhân viên" loading="lazy"></a>
+      <figcaption>Dải màu ngay dưới thanh trên. <b>Gọi món</b>: mỗi trạm làm chỉ thấy món của mình (bếp thấy phở, quầy thấy trà đá). <b>Yêu cầu tính tiền</b> có nút <b>Mở tính tiền</b>. Nhãn <b>Trạm này · Bếp</b> đánh dấu trạm nhận yêu cầu, chỉ trạm này kêu <i>ding</i>. <b>Đã biết</b> chỉ tắt cảnh báo. Khách bấm nhiều lần vẫn chỉ một cảnh báo cho tới khi có người bấm Đã biết. Cảnh báo của khách không bao giờ đẩy mất cảnh báo dừng khẩn, mất kết nối, robot bị chặn.</figcaption></figure>
+
+    <h3>Máy trạm nhân viên: Giám sát</h3>
+    <figure style="margin-top:16px"><a href="img/station-mon.jpg" target="_blank" rel="noopener"><img src="img/station-mon.jpg" alt="Màn Giám sát: sơ đồ sàn với robot, bảng bên phải có tab Đội robot, Nhiệm vụ, Nhật ký, Mô phỏng" loading="lazy"></a>
+      <figcaption><b>Giám sát</b> (quản lý ca mở mặc định): sơ đồ sàn hoặc bản đồ Valetudo thật, 6 chỉ số trong ngày, và bảng 4 tab. <b>Đội robot</b>: tạm dừng, chạy tiếp, xử lý thủ công. <b>Nhiệm vụ</b>: huỷ từng bàn hoặc cả chuyến. <b>Nhật ký</b>: mọi sự kiện có giờ, kể cả dẫn khách và đi chậm. <b>Mô phỏng</b> (chỉ bản demo): tạo vật cản, mất kết nối, pin yếu, dừng khẩn cấp.</figcaption></figure>
+
+    <h3>Màn hình trên robot: giao món</h3>
+    <p class="read">Không cuộn, nút lệnh luôn ở cùng một chỗ: cột phải khi tablet nằm ngang, dải dưới khi dựng dọc. Mọi chữ khách thấy đều có tiếng Anh. Nút <b>DỪNG · STOP</b> luôn ở góc trên.</p>
+    <div class="shots">
+      <figure><a href="img/robot-load.jpg" target="_blank" rel="noopener"><img src="img/robot-load.jpg" alt="Màn robot tại bếp: xếp món lên khay" loading="lazy"></a>
+        <figcaption><b>Tại bếp.</b> Khay nào cho bàn nào, ghi chú của bếp; <b>Đã xếp xong · Đi giao</b> hoặc huỷ.</figcaption></figure>
+      <figure><a href="img/robot-moving.jpg" target="_blank" rel="noopener"><img src="img/robot-moving.jpg" alt="Màn robot đang đi giao tới Bàn 05" loading="lazy"></a>
+        <figcaption><b>Đang đi.</b> Đích, thời gian còn lại, lộ trình; nhân viên có thể <b>Tạm dừng</b> hoặc <b>Huỷ chuyến</b> (chạm 2 lần).</figcaption></figure>
+    </div>
+    <div class="shots three">
+      <figure><a href="img/robot-handoff.jpg" target="_blank" rel="noopener"><img src="img/robot-handoff.jpg" alt="Màn robot tại Bàn 05: mời quý khách lấy món ở Khay 1, nút Đã nhận món, Báo nhầm món, Gọi nhân viên, Yêu cầu tính tiền" loading="lazy"></a>
+        <figcaption><b>Tới bàn.</b> Khay của bàn sáng lên. Khách bấm <b>Đã nhận món</b>, <b>Báo nhầm món / Cần hỗ trợ</b>, <b>Gọi nhân viên</b> hoặc <b>Yêu cầu tính tiền</b>. Không ai bấm thì robot tự đi tiếp sau thời gian đã cài. Lúc này không có Gọi món / Thanh toán vì đồng hồ chờ vẫn chạy.</figcaption></figure>
+      <figure><a href="img/robot-portrait.jpg" target="_blank" rel="noopener"><img src="img/robot-portrait.jpg" alt="Cùng màn đó khi tablet dựng dọc" loading="lazy"></a>
+        <figcaption><b>Dựng dọc.</b> Nút chuyển xuống dưới.</figcaption></figure>
+      <figure><a href="img/robot-at-table.jpg" target="_blank" rel="noopener"><img src="img/robot-at-table.jpg" alt="Robot được gọi tới Bàn 05 đang chờ: Gọi món, Mang chén về khu rửa, Xong cho robot về" loading="lazy"></a>
+        <figcaption><b>Được gọi tới bàn.</b> Robot đứng chờ: <b>Gọi món</b>, <b>Thanh toán</b> (khi bàn có phiếu), <b>Mang chén về khu rửa</b>, <b>Xong · Cho robot về</b>. Khi bị chặn, dừng khẩn, pin yếu, mất kết nối, thanh trên đổi màu cam hoặc đỏ.</figcaption></figure>
+    </div>
+
+    <h3>Robot chờ ở trạm: giao, thu dọn, dẫn khách</h3>
+    <p class="read">Robot được gọi tới bếp, quầy hoặc cửa đón khách thì có bước <b>Chọn việc</b>: <b>Giao món</b> hoặc <b>Thu dọn bàn</b>, rồi chọn bàn ngay trên robot, không phải quay lại trạm. Nhân viên đứng ở trạm hoặc cửa đón dùng <b>Nhân viên: dẫn khách tới bàn</b>.</p>
+    <div class="shots three">
+      <figure><a href="img/robot-standby.jpg" target="_blank" rel="noopener"><img src="img/robot-standby.jpg" alt="Màn robot chờ ở Bếp: chọn việc Giao món hoặc Thu dọn bàn, lưới 12 bàn, cột phải có Dẫn khách tới bàn và Gọi món" loading="lazy"></a>
+        <figcaption><b>Chờ ở bếp.</b> Thu dọn chỉ chọn một bàn; robot tới bàn thu chén rồi mang về khu rửa.</figcaption></figure>
+      <figure><a href="img/guide-pick.jpg" target="_blank" rel="noopener"><img src="img/guide-pick.jpg" alt="Màn chọn bàn để dẫn khách, Bàn 11 được chọn" loading="lazy"></a>
+        <figcaption><b>Dẫn khách.</b> Chọn bàn rồi <b>Xác nhận · dẫn tới Bàn 11</b>.</figcaption></figure>
+      <figure><a href="img/guide-slow.jpg" target="_blank" rel="noopener"><img src="img/guide-slow.jpg" alt="Màn dẫn khách tới Bàn 11, đang đi chậm, thanh tiến độ" loading="lazy"></a>
+        <figcaption><b>Đang dẫn.</b> Thanh tiến độ; <b>Đi chậm hơn</b> chỉ có trên robot giả lập. Tới bàn, khách bấm <b>Đã tới bàn</b>; không ai bấm thì robot nhắc rồi tự về, không tính là giao thất bại.</figcaption></figure>
+    </div>
+
+    <h3>Robot tại bàn: gọi món và thanh toán</h3>
+    <div class="shots three">
+      <figure><a href="img/robot-order.jpg" target="_blank" rel="noopener"><img src="img/robot-order.jpg" alt="Màn Gọi món Bàn 05: danh mục Đồ uống, lưới món, giỏ 5 món 243.000đ, nút Gửi bếp 5 món" loading="lazy"></a>
+        <figcaption><b>Gọi món.</b> Danh mục, món, giá, giỏ có tổng tiền. <b>Gửi bếp</b>: mỗi trạm nhận cảnh báo món của mình; bếp vẫn tự tạo chuyến giao. Robot không đứng ở bàn thì chọn bàn trước.</figcaption></figure>
+      <figure><a href="img/robot-pay.jpg" target="_blank" rel="noopener"><img src="img/robot-pay.jpg" alt="Màn Thanh toán Bàn 05: phiếu #1 do nhân viên xác nhận, tổng 243.000đ, mã VietQR tài khoản demo" loading="lazy"></a>
+        <figcaption><b>Thanh toán.</b> Chỉ hiện khi nhân viên đã chuẩn bị phiếu cho bàn. QR đúng tổng của phiếu, nội dung <code>Ban 05 phieu 1</code>. Tài khoản trong ảnh là tài khoản demo.</figcaption></figure>
+      <figure><a href="img/robot-pay-wait.jpg" target="_blank" rel="noopener"><img src="img/robot-pay-wait.jpg" alt="Sau khi khách bấm Tôi đã chuyển khoản: Đang chờ nhân viên xác nhận" loading="lazy"></a>
+        <figcaption><b>Khách đã báo chuyển.</b> Robot hiện “Đang chờ nhân viên xác nhận”. Đây là khách <b>báo</b>, chưa phải đã thu (xem Phần 3).</figcaption></figure>
+    </div>
+
+    <h3>Trang QR của khách</h3>
+    <div class="shots">
+      <figure style="max-width:320px"><a href="img/table-qr.jpg" target="_blank" rel="noopener"><img src="img/table-qr.jpg" alt="Trang QR Bàn 07 tiếng Việt: món đang tới, nút Báo nhầm món, chân trang Gọi nhân viên và Yêu cầu tính tiền" loading="lazy"></a>
+        <figcaption><b>Tiếng Việt</b> (<code>table.html?t=T07</code>): món đang tới và tiến độ, đơn gọi trên robot, chân trang <b>Gọi nhân viên</b> và <b>Yêu cầu tính tiền</b> (mỗi nút nghỉ 30 giây sau khi chạm).</figcaption></figure>
+      <figure style="max-width:320px"><a href="img/table-qr-en.jpg" target="_blank" rel="noopener"><img src="img/table-qr-en.jpg" alt="Trang QR Table 07 tiếng Anh" loading="lazy"></a>
+        <figcaption><b>English.</b> Khách chọn VI/EN một lần, trình duyệt nhớ. Tên trạm, tên món lấy thẳng từ cấu hình.</figcaption></figure>
+    </div>
+
+    <h3>Trang Cấu hình</h3>
+    <p class="read"><code>setup.html</code>, 6 tab trên thanh trên, nút <b>Lưu</b> / <b>Huỷ thay đổi</b> góc phải. Lưu có hiệu lực ngay, mọi màn đang mở tự cập nhật.</p>
+    <div class="tw"><table>
+      <thead><tr><th>Tab</th><th>Dùng để</th></tr></thead>
+      <tbody>
+        <tr><td>Điểm & bản đồ</td><td><b>+ Thêm bàn</b>, <b>+ Thêm trạm</b>, <b>+ Thêm cửa</b> (cửa đón khách cho dẫn khách). Chạm bản đồ robot để đặt điểm, <b>Dùng vị trí robot</b>, <b>Chạy thử tới đây</b>.</td></tr>
+        <tr><td>Robot</td><td>Robot thật / Giả lập, topic MQTT, 9 núm chỉnh, ngưỡng pin.</td></tr>
+        <tr><td>Vai trò & thời gian</td><td>Vai trò màn trạm (màn mặc định, vị trí), thời gian chờ, số khay, <b>Ghi chú nhanh</b> (tối đa 8, mỗi cái 24 ký tự).</td></tr>
+        <tr><td>Tính năng</td><td>Bật/tắt tính năng cho khách, trạm nhận yêu cầu, thực đơn, tài khoản VietQR (Phần 2).</td></tr>
+        <tr><td>Sao lưu</td><td>Tải xuống / Nhập JSON, khôi phục mặc định.</td></tr>
+        <tr><td>Hệ thống</td><td>Chỉ đọc: kiểm tra mạng, broker, robot thật, tính năng đang dùng.</td></tr>
+      </tbody>
+    </table></div>
+    <div class="shots three">
+      <figure><a href="img/setup-points.jpg" target="_blank" rel="noopener"><img src="img/setup-points.jpg" alt="Trang Cấu hình, tab Điểm và bản đồ" loading="lazy"></a>
+        <figcaption><b>Điểm & bản đồ.</b> Bản demo không có bản đồ robot thật nên khung bản đồ trống.</figcaption></figure>
+      <figure><a href="img/setup-roles.jpg" target="_blank" rel="noopener"><img src="img/setup-roles.jpg" alt="Tab Vai trò và thời gian: 4 vai trò, thời gian và khay, ghi chú nhanh" loading="lazy"></a>
+        <figcaption><b>Vai trò & thời gian</b> với thẻ Ghi chú nhanh.</figcaption></figure>
+      <figure><a href="img/setup-robots.jpg" target="_blank" rel="noopener"><img src="img/setup-robots.jpg" alt="Trang Cấu hình, tab Robot" loading="lazy"></a>
+        <figcaption><b>Robot</b>: thật / giả lập, topic, núm chỉnh.</figcaption></figure>
+    </div>
+
+    <h3>Cấu hình → Hệ thống: mạng, broker, robot thật</h3>
+    <p class="read">Tab chỉ đọc, tự làm mới mỗi 3 giây (<code>setup.html?tab=system</code>). Gom mọi thông số mạng vào một chỗ và chỉ đúng nguyên nhân khi robot mất kết nối. Khối <b>Tính năng đang sử dụng</b> liệt kê mô hình phục vụ, từng tính năng Đang bật / Đã tắt / Chưa đủ điều kiện, trạm nhận yêu cầu, và nút <b>Quản lý tính năng</b>.</p>
+    <figure style="margin-top:16px"><a href="img/setup-system.jpg" target="_blank" rel="noopener"><img src="img/setup-system.jpg" alt="Tab Hệ thống: khối Kiểm tra báo sóng Wi-Fi yếu, khối Điền vào Valetudo, Máy chủ với IP và cổng, thẻ Robot thật R1" loading="lazy"></a>
+      <figcaption>Chụp trên Node-RED thật với robot giả lập, trước khi có khối Tính năng đang sử dụng. <b>Kiểm tra</b>: danh sách lỗi xếp từ nặng tới nhẹ, mỗi dòng có cách sửa; hết lỗi thì một dòng xanh “Mọi thứ bình thường”. <b>Điền vào Valetudo</b>: Host, Port, Username để dán vào Connectivity → MQTT. <b>Máy chủ</b>: IP và cổng, địa chỉ tablet đang dùng, IP lần trước, thời gian chạy. <b>Robot thật</b>: trạng thái, pin, tin cuối, bản đồ cuối, IP · SSID · dBm, số bàn đã định vị, nút <b>Mở Valetudo ↗</b>.</figcaption></figure>
+    <div class="tw"><table>
+      <thead><tr><th>Dòng kiểm tra</th><th>Nghĩa là gì</th></tr></thead>
+      <tbody>
+        <tr><td><span class="lv err">Lỗi</span> IP điện thoại đã đổi</td><td>Router cấp IP mới; robot và mã QR vẫn trỏ IP cũ. Kèm nút <b>Đã cập nhật robot và QR</b> để xác nhận sau khi sửa.</td></tr>
+        <tr><td><span class="lv err">Lỗi</span> Broker MQTT trong máy không chạy</td><td>Mosquitto trên điện thoại đã tắt; robot thật không điều khiển được. Chỉ báo khi cấu hình có robot Valetudo.</td></tr>
+        <tr><td><span class="lv err">Lỗi</span> R1 mất kết nối</td><td>Kèm thời gian và gợi ý: robot còn bật, cùng Wi-Fi, Host trong Valetudo đúng IP điện thoại.</td></tr>
+        <tr><td><span class="lv warn">Cảnh báo</span> chưa gửi bản đồ · chưa định vị bàn · sóng yếu</td><td>Chưa bật “Provide map data”; còn bàn chưa định vị cho robot (liệt kê mã bàn); Wi-Fi robot dưới −70 dBm.</td></tr>
+        <tr><td><span class="lv info">Tham khảo</span></td><td>Số kết nối tới broker thấp hơn dự kiến; có thay đổi chưa lưu; máy vừa cài, chưa biết IP có cố định không.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="read muted" style="margin-top:8px">Không hiện mật khẩu MQTT (trang không có đăng nhập). Bản demo trên web không có máy chủ nên tab chỉ hiện dải “Chỉ có khi chạy trên máy nhà hàng” và các kiểm tra tính được từ cấu hình.</p>
+
+    <div class="shots">
+      <figure><a href="img/map.jpg" target="_blank" rel="noopener"><img src="img/map.jpg" alt="Thiết kế lộ trình: sơ đồ lối đi" loading="lazy"></a>
+        <figcaption><b>Thiết kế lộ trình</b> (chỉ khi có robot giả lập): kéo điểm, nối lối đi, bật Một chiều, Lối hẹp, Đi chậm, Đóng lối rồi <b>Áp dụng cho đội robot</b>.</figcaption></figure>
+      <figure><a href="img/hub.jpg" target="_blank" rel="noopener"><img src="img/hub.jpg" alt="Trang chọn màn hình" loading="lazy"></a>
+        <figcaption><b>Trang chọn màn hình</b> (<code>/</code>): đường dẫn tới mọi màn theo vai trò, robot, bàn. Mở trang này trên tablet mới rồi chọn màn của máy đó.</figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<section id="tinh-nang">
+  <div class="wrap">
+    <div class="eyebrow">Phần 2</div>
+    <h2>Tính năng cho khách: bật theo cách nhà hàng phục vụ</h2>
+    <p class="lede read">Cài mới thì mọi tính năng tắt; robot chỉ giao món và thu dọn từ trạm. Quản lý bật từng mục ở Cấu hình → <b>Tính năng</b> rồi <b>Lưu</b>. Mỗi mục hiện <b>Đang bật</b>, <b>Đã tắt</b> hoặc <b>Chưa đủ điều kiện</b> kèm lý do và nút tới chỗ sửa.</p>
+    <figure style="margin-top:22px"><a href="img/setup-features.jpg" target="_blank" rel="noopener"><img src="img/setup-features.jpg" alt="Tab Tính năng: chọn mô hình phục vụ, các công tắc tính năng, trạm nhận yêu cầu, thực đơn, thanh toán VietQR" loading="lazy"></a>
+      <figcaption>Tab <b>Tính năng</b>. Trái: <b>Áp dụng gợi ý</b> theo mô hình (Phục vụ tại bàn, trả sau · Đặt-trả trước tại quầy · Buffet · Tự cấu hình) chỉ đổi bản nháp, xem lại rồi mới Lưu; các công tắc; <b>Trạm nhận yêu cầu</b>; cách xử lý khi khách trả món. Phải: thực đơn (danh mục và trạm làm, món và giá) và tài khoản VietQR, ảnh QR tĩnh khi không có Internet. Cột trái cuộn xuống còn mục Dẫn khách tới bàn.</figcaption></figure>
+    <div class="tw"><table>
+      <thead><tr><th>Tính năng</th><th>Cần gì để đủ điều kiện</th><th>Khách / robot thấy</th><th>Nhân viên thấy</th></tr></thead>
+      <tbody>
+        <tr><td>Thu dọn từ robot</td><td>Có bàn, khu rửa chén</td><td>Màn robot: Thu dọn bàn, Mang chén về khu rửa</td><td>Thu dọn tạo từ trạm luôn có, không phụ thuộc mục này</td></tr>
+        <tr><td>Gọi nhân viên</td><td>Bàn + trạm nhận yêu cầu</td><td>Trang QR, màn robot: Gọi nhân viên</td><td><i>ding</i> ở trạm nhận; một cảnh báo mỗi bàn tới khi bấm Đã biết</td></tr>
+        <tr><td>Yêu cầu tính tiền</td><td>Bàn + trạm nhận yêu cầu</td><td>Yêu cầu tính tiền (độc lập với Gọi nhân viên)</td><td>Cảnh báo, bàn hiện trong chế độ Tính tiền</td></tr>
+        <tr><td>Gọi món trên robot</td><td>Thực đơn có món, giá là số nguyên ≥ 0, danh mục có trạm làm</td><td>Robot đứng yên: Gọi món → chọn bàn nếu robot không ở bàn → Gửi bếp</td><td>Mỗi trạm làm nhận cảnh báo món của mình; bếp vẫn tự tạo chuyến giao</td></tr>
+        <tr><td>Thanh toán QR trên robot</td><td>Trạm nhận + ngân hàng, số tài khoản, tên chủ tài khoản</td><td>Robot tại bàn có phiếu: Thanh toán → QR đúng tổng → Tôi đã chuyển khoản</td><td>Cảnh báo “khách báo đã chuyển”, <b>chưa phải đã thu</b></td></tr>
+        <tr><td>Dẫn khách tới bàn</td><td>Bàn, trạm hoặc cửa đón khách, robot tới được bàn</td><td>Robot chờ ở trạm/cửa: Nhân viên: dẫn khách tới bàn → chọn, xác nhận bàn → Đã tới bàn</td><td>Nhật ký. Không ai bấm Đã tới bàn sau thời gian chờ khách → robot tự về</td></tr>
+      </tbody>
+    </table></div>
+    <ul class="read" style="margin-top:16px">
+      <li><b>Trạm nhận yêu cầu</b>: trạm kêu <i>ding</i> cho Gọi nhân viên, Yêu cầu tính tiền và khách báo đã chuyển khoản. Bắt buộc cho ba tính năng đó; trạm khác vẫn thấy cảnh báo nhưng không kêu.</li>
+      <li><b>Khách trả/huỷ món</b> là lựa chọn, không phải công tắc. <b>Báo nhân viên</b> (mặc định): khách bấm Báo nhầm món / Cần hỗ trợ, robot giữ nguyên chuyến, trạm xuất phát nhận cảnh báo, nhân viên tự thu hồi nếu cần. <b>Khách tự gửi trả</b>: Yêu cầu mang món về, chạm hai lần, robot bỏ điểm giao đó. Cả hai chỉ là xử lý chuyến giao, không phải hoàn tiền.</li>
+      <li><b>Bật khi chưa đủ điều kiện</b> vẫn lưu được, nhưng máy chủ không nhận yêu cầu mới cho tới khi đủ. Nút cho khách ẩn khi tính năng tắt; máy chủ cũng từ chối yêu cầu gửi tới (phòng tablet còn mở trang cũ).</li>
+      <li><b>Tắt một tính năng</b> chỉ chặn yêu cầu mới: cảnh báo, đơn, phiếu và chuyến đang có vẫn xử lý tới cùng.</li>
+      <li><b>Đổi bàn</b> và <b>Thu dọn từ trạm</b> luôn có, không có công tắc.</li>
+      <li>Robot Valetudo <b>không chỉnh được tốc độ</b>: màn robot không có nút Đi chậm hơn, lệnh tốc độ bị máy chủ từ chối. Chỉ robot giả lập có nút này.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="tinh-tien">
+  <div class="wrap">
+    <div class="eyebrow">Phần 3</div>
+    <h2>Tính tiền: nhân viên xác nhận bằng tay</h2>
+    <p class="lede read">App không nối với POS hay ngân hàng. Không có gì trong app biết tiền đã vào tài khoản. Robot chỉ hiện QR; khách bấm <b>Tôi đã chuyển khoản</b> là khách báo, không phải ngân hàng xác nhận.</p>
+    <ol class="trip" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+      <li><b>Chuẩn bị phiếu</b>Trạm → <strong>Tính tiền</strong> → chọn bàn (hoặc Bàn khác). Đối chiếu mọi khoản ở nguồn của quán, nhập tổng, ghi chú nếu khác tổng tham khảo, đánh dấu Đã đối chiếu → <strong>Chuẩn bị phiếu</strong>.</li>
+      <li><b>Khách trả</b>Robot đứng tại bàn hiện QR đúng tổng phiếu, nội dung <code>Ban 05 phieu 12</code>. Khách chuyển rồi bấm Tôi đã chuyển khoản.</li>
+      <li><b>Xác nhận thu</b>Nhân viên mở <strong>app ngân hàng của quán</strong>, thấy đúng số tiền và nội dung → chọn Chuyển khoản / Tiền mặt / Thẻ → <strong>Xác nhận đã thu tiền</strong> (chạm 2 lần).</li>
+      <li><b>Đóng lượt</b><strong>Đóng lượt tính tiền</strong> đóng đúng các đơn trong phiếu. Nhóm khách sau bắt đầu sạch.</li>
+    </ol>
+    <div class="shots">
+      <figure><a href="img/station-bill-prepare.jpg" target="_blank" rel="noopener"><img src="img/station-bill-prepare.jpg" alt="Chế độ Tính tiền: danh sách bàn cần tính tiền, Bàn 05 với đơn robot 243.000đ, ô Tổng phải thu đã đối chiếu, ô ghi chú, ô Đã đối chiếu" loading="lazy"></a>
+        <figcaption><b>Chuẩn bị phiếu.</b> Trái: bàn cần tính tiền (yêu cầu tính tiền, đơn chưa tính), <b>Bàn khác</b> cho bàn chỉ gọi món với nhân viên. Phải: đơn robot chưa đóng, tổng tham khảo, ô tổng phải thu và ghi chú nguồn đối chiếu.</figcaption></figure>
+      <figure><a href="img/station-bill.jpg" target="_blank" rel="noopener"><img src="img/station-bill.jpg" alt="Phiếu #1 Bàn 05 243.000đ, nhãn Khách báo đã chuyển khoản, chọn Chuyển khoản, Tiền mặt, Thẻ; cảnh báo Bàn 05 báo đã trả phiếu #1" loading="lazy"></a>
+        <figcaption><b>Khách đã báo chuyển.</b> Dải cảnh báo “Bàn 05 báo đã trả phiếu #1 · 243.000đ — kiểm tra giao dịch rồi xác nhận”. Phiếu mang nhãn <b>Khách báo đã chuyển khoản</b>; chọn cách thu rồi Xác nhận đã thu tiền ở cuối thẻ.</figcaption></figure>
+    </div>
+    <div class="note safe"><b>Không xác nhận khi chưa thấy tiền:</b> chỉ bấm Xác nhận đã thu tiền sau khi thấy giao dịch trong app ngân hàng của quán, đúng số tiền và nội dung. Tên người thao tác chỉ là nhãn, không phải đăng nhập.</div>
+    <ul class="read" style="margin-top:16px">
+      <li><b>Phiếu sai, chưa thu</b>: <b>Vô hiệu hóa phiếu</b> (cần lý do, đơn giữ nguyên). Khách đã báo chuyển mà phải vô hiệu hóa thì kiểm tra giao dịch trước khi tạo phiếu mới.</li>
+      <li>Phiếu đã xác nhận thu <b>không</b> vô hiệu hóa được; điều chỉnh, hoàn tiền làm ngoài app.</li>
+      <li>Bàn đang có phiếu <b>không nhận gọi món mới</b> (“Bàn đang tính tiền”): vô hiệu hóa phiếu chưa thu hoặc đóng lượt trước.</li>
+      <li>Đóng lượt bị từ chối khi bàn còn đơn mới ngoài phiếu, hoặc robot còn đang giao tới bàn.</li>
+      <li>Đổi ngân hàng / số tài khoản khi còn phiếu chờ trả bị từ chối lưu; trang nêu các bàn bị ảnh hưởng.</li>
+      <li><b>Đã biết</b> trên cảnh báo chỉ tắt cảnh báo, không đóng đơn hay đổi trạng thái tiền.</li>
+      <li>Phiếu tổng 0đ không mở QR; nhân viên chốt tại trạm.</li>
+      <li><b>Lưu trữ</b>: đơn và phiếu chưa đóng giữ qua ngày và qua khởi động lại. Phiếu đã đóng / vô hiệu hóa và đơn đã đóng giữ 30 ngày rồi tự dọn. Đây là dữ liệu vận hành, không thay sổ kế toán.</li>
+      <li><b>Không có Internet</b>: ảnh VietQR (có số tiền) cần Internet. Tablet robot không ra được Internet thì robot hiện ảnh QR tĩnh tải lên ở tab Tính năng (không chứa số tiền), hoặc chỉ hiện số tài khoản.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="cai-dat">
+  <div class="wrap">
+    <div class="eyebrow">Phần 4</div>
+    <h2>Cài đặt</h2>
+    <p class="lede read">Máy chủ là một điện thoại Android cắm sạc, đặt cố định trong nhà hàng. Cài lần đầu và cập nhật dùng cùng một lệnh; cấu hình, đơn và phiếu (bàn, điểm, robot, tính năng) không mất khi cài lại.</p>
+
+    <h3>Cần chuẩn bị</h3>
+    <div class="tw"><table>
+      <thead><tr><th>Thiết bị</th><th>Yêu cầu</th></tr></thead>
+      <tbody>
+        <tr><td>Điện thoại máy chủ</td><td>Android, cài <b>Termux</b> và <b>Termux:Boot</b> từ F-Droid (bản trên Play Store cũ, không cài được gói mới). Mở Termux:Boot một lần để Android cho phép tự chạy. Cắm sạc liên tục.</td></tr>
+        <tr><td>Router Wi-Fi</td><td>Đặt <b>IP cố định</b> (DHCP reservation) cho điện thoại và cho robot. Không dùng mạng khách có “cách ly thiết bị”. Có Internet nếu dùng VietQR có số tiền.</td></tr>
+        <tr><td>Tablet</td><td>Chrome bản mới (từ 108 trở lên để khung không cuộn hoạt động; bản đồ robot cần Chrome 99+). Cùng Wi-Fi với điện thoại.</td></tr>
+        <tr><td>Robot</td><td>Đã cài Valetudo, có bản đồ, bật persistent map.</td></tr>
+        <tr><td>Nếu bật tính năng khách</td><td>Mã QR in cho từng bàn (<code>table.html?t=T05</code>), thực đơn có giá, tài khoản ngân hàng nhận chuyển khoản, app ngân hàng của quán trên máy nhân viên.</td></tr>
+        <tr><td>Máy Mac (người cài)</td><td>Repo <code>trial</code>, Node.js. RustDesk để điều khiển điện thoại từ xa, hoặc SSH (Tailscale nếu khác mạng).</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Đóng gói trên Mac</h3>
+    <div class="cmd"><pre><code>cd trial
+npm test            <span class="c"># mọi bộ kiểm tra phải đạt, không có dòng fail</span>
+npm run pack        <span class="c"># → dist/robot-nodered.tar.gz</span></code></pre><button type="button">Chép</button></div>
+    <p class="read muted" style="margin-top:8px">Gói gồm flows, giao diện, âm thanh, trình cài Termux và runbook Valetudo. Không chứa trạng thái chạy (<code>data/context</code>), nên không ghi đè cấu hình, đơn, phiếu trên máy. Lõi và giao diện luôn đi cùng một gói, không cập nhật riêng phần nào.</p>
+
+    <h3>Đưa lên điện thoại: chọn một trong hai cách</h3>
+    <div class="paths">
+      <div class="card">
+        <h4>Cách A · RustDesk + đường link</h4>
+        <div class="when">Khi chỉ điều khiển được màn hình điện thoại từ xa.</div>
+        <ol>
+          <li>Tải <code>robot-nodered.tar.gz</code> lên chỗ có link tải trực tiếp.</li>
+          <li>Qua RustDesk, mở Termux trên điện thoại, dán lệnh dưới (thay <code>&lt;link&gt;</code>).</li>
+          <li>Lần đầu, trình cài hỏi mật khẩu trình soạn Node-RED (user <code>admin</code>, ít nhất 8 ký tự). Gõ trực tiếp trong Termux.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h4>Cách B · SSH từ Mac (<code>deploy.sh</code>)</h4>
+        <div class="when">Nhanh hơn khi cập nhật nhiều lần; đỡ phải gõ qua RustDesk.</div>
+        <ol>
+          <li>Trên Termux, một lần: <code>pkg install openssh</code>, <code>passwd</code>, <code>sshd</code>, ghi lại <code>whoami</code>.</li>
+          <li>Trên Mac: <code>sh scripts/deploy.sh &lt;IP hoặc tên Tailscale&gt; &lt;user&gt;</code>. Script đóng gói, chép qua cổng 8022 và chạy trình cài.</li>
+        </ol>
+      </div>
+    </div>
+    <div class="cmd"><div class="lbl">Cách A · dán trong Termux</div><pre><code>curl -L -o robot-nodered.tar.gz &lt;link&gt; &amp;&amp; rm -rf ~/bundle &amp;&amp; mkdir ~/bundle \
+  &amp;&amp; tar xzf robot-nodered.tar.gz -C ~/bundle &amp;&amp; bash ~/bundle/termux/install.sh</code></pre><button type="button">Chép</button></div>
+    <div class="cmd"><div class="lbl">Cách B · trên Mac</div><pre><code>sh scripts/deploy.sh 192.168.1.50 u0_a123   <span class="c"># ví dụ; user là kết quả whoami trong Termux</span></code></pre><button type="button">Chép</button></div>
+
+    <h3>Trình cài làm gì</h3>
+    <ol class="read">
+      <li>Dừng bản đang chạy, đợi tiến trình thoát hẳn và cổng trống. Nếu cổng vẫn bận thì dừng mọi tiến trình node.</li>
+      <li>Lần đầu: <code>pkg upgrade</code> toàn bộ, cài <code>nodejs-lts</code>, <code>termux-api</code>, Node-RED 5.0.8 và Mosquitto.</li>
+      <li>Máy chưa từng lưu cấu hình trên màn hình: giữ <code>site.json</code> đang dùng vào context trước khi thay file mẫu, sao lưu thành <code>~/robot/site.json.old</code>. Context lỗi JSON thì dừng, không ghi đè.</li>
+      <li>Chép ứng dụng vào <code>~/robot</code>. Cấu hình, đơn, phiếu sống ở <code>~/robot/context/</code> nên được giữ nguyên.</li>
+      <li>Tạo mật khẩu MQTT một lần (<code>~/robot/.mqtt-pass</code>) và viết <code>mosquitto.conf</code>: cổng 1883 cho robot (có mật khẩu), cổng 1884 chỉ trong máy cho Node-RED.</li>
+      <li>Tạo script tự chạy khi bật máy: giữ CPU thức, canh Mosquitto mỗi 15 giây, khởi động lại Node-RED nếu bị tắt.</li>
+      <li>Đợi tối đa 2 phút cho tới khi <code>/api/map</code> trả lời (chứng tỏ bản mới đã chạy), rồi in danh sách địa chỉ.</li>
+    </ol>
+    <div class="ipbox" id="ipbox">
+      <label for="ip"><b>IP điện thoại</b><small>Dòng “MQTT broker cho Valetudo” hoặc địa chỉ trình cài in ra; xem lại: Cấu hình → Hệ thống</small></label>
+      <div class="ipin"><input id="ip" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="192.168.1.23" aria-describedby="ipmsg"><span>:</span><input id="port" inputmode="numeric" autocomplete="off" placeholder="1880" aria-label="Cổng Node-RED"></div>
+      <p id="ipmsg" class="ipmsg">Điền IP để các địa chỉ bên dưới thành link mở được và chép nhanh sang RustDesk. Chỉ lưu trong trình duyệt này.</p>
+    </div>
+    <div class="tw"><table class="ports">
+      <thead><tr><th>Địa chỉ in ra sau khi cài</th><th>Dùng cho</th></tr></thead>
+      <tbody>
+        <tr><td data-t="http://{ip}:{port}/" data-link></td><td>Trang chọn màn hình, mở trên tablet mới</td></tr>
+        <tr><td data-t="http://{ip}:{port}/setup.html" data-link></td><td>Cấu hình (quản lý)</td></tr>
+        <tr><td data-t="http://{ip}:{port}/setup.html?tab=features" data-link></td><td>Tab Tính năng: bật tính năng khách, thực đơn, VietQR</td></tr>
+        <tr><td data-t="http://{ip}:{port}/setup.html?tab=system" data-link></td><td>Tab Hệ thống: IP, broker, robot thật, thông số điền vào Valetudo</td></tr>
+        <tr><td data-t="http://{ip}:{port}/api/health" data-link></td><td>Cùng dữ liệu dạng JSON (không có mật khẩu)</td></tr>
+        <tr><td data-t="http://{ip}:{port}/station.html?role=bep" data-link></td><td>Màn trạm bếp (đổi <code>role=</code> cho bar, dọn bàn, ql; thêm <code>&amp;view=bill</code> để mở thẳng Tính tiền)</td></tr>
+        <tr><td data-t="http://{ip}:{port}/robot.html?robot=R1" data-link></td><td>Tablet gắn trên robot R1</td></tr>
+        <tr><td data-t="http://{ip}:{port}/table.html?t=T05" data-link></td><td>Trang khách Bàn 05: in thành mã QR đặt trên bàn</td></tr>
+        <tr><td data-t="http://{ip}:{port}/admin" data-link></td><td>Trình soạn Node-RED (cần mật khẩu admin)</td></tr>
+        <tr><td data-t="{ip}"></td><td>Host điền vào Valetudo (Port <code>1883</code>, user <code>valetudo</code>); xem mật khẩu: <code>cat ~/robot/.mqtt-pass</code></td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Nối robot Valetudo</h3>
+    <p class="read">Mở <code>http://&lt;IP robot&gt;</code> → <b>Connectivity → MQTT</b>. Host, Port, Username có sẵn ở Cấu hình → <b>Hệ thống</b> → <b>Điền vào Valetudo</b> (nút <b>Chép</b>):</p>
+    <div class="tw"><table>
+      <thead><tr><th>Mục</th><th>Giá trị</th></tr></thead>
+      <tbody>
+        <tr><td>Enabled</td><td>bật</td></tr>
+        <tr><td>Host / Port</td><td><span data-t="{ip}" data-empty="IP điện thoại"></span> / <code>1883</code></td></tr>
+        <tr><td>Username / Password</td><td><code>valetudo</code> / mật khẩu in ra lúc cài</td></tr>
+        <tr><td>TLS</td><td>tắt</td></tr>
+        <tr><td>Provide map data</td><td><b>bật</b>, để biết robot đang ở đâu và hiện bản đồ trên màn trạm</td></tr>
+      </tbody>
+    </table></div>
+    <p class="read" style="margin-top:12px">Ghi lại <b>Topic prefix</b> và <b>Identifier</b>. Topic của robot là <code>&lt;prefix&gt;/&lt;identifier&gt;</code>, ví dụ <code>valetudo/InsecureYellowishGoldfish</code>.</p>
+
+    <h3>Khai trong trang Cấu hình</h3>
+    <ol class="read">
+      <li>Tab <b>Robot</b>: R1 chọn <b>Robot thật</b>, điền <b>Topic MQTT</b>, bấm <b>Lưu</b>. Vài giây sau, màn Giám sát phải thấy R1 có pin. Node-RED đăng ký topic mới và nhận ngay trạng thái, Wi-Fi, bản đồ robot đã gửi sẵn.</li>
+      <li>Tab <b>Điểm & bản đồ</b>: <b>+ Thêm bàn</b> cho từng bàn. Bếp, quầy, khu rửa, sạc có sẵn. Dùng dẫn khách thì <b>+ Thêm cửa</b> cho chỗ đón khách.</li>
+      <li>Định vị từng điểm: lái robot tới đúng chỗ dừng rồi bấm <b>Dùng vị trí robot</b> (chính xác nhất), hoặc chọn điểm rồi chạm lên bản đồ, chỉnh ±10 cm bằng mũi tên.</li>
+      <li><b>Chạy thử tới đây</b> để xem robot dừng đúng chỗ. <b>Lưu</b>: có hiệu lực ngay, mọi màn đang mở tự cập nhật.</li>
+      <li>Tab <b>Vai trò & thời gian</b>: chỉnh ghi chú nhanh, thời gian chờ nếu cần.</li>
+      <li>Tab <b>Tính năng</b>: chọn trạm nhận yêu cầu, nhập thực đơn và tài khoản nếu dùng, bật từng tính năng, xem không còn mục “Chưa đủ điều kiện”, <b>Lưu</b>.</li>
+      <li>Tab <b>Sao lưu</b> → <b>Tải xuống JSON</b> sau mỗi lần đổi sơ đồ bàn hay tính năng.</li>
+    </ol>
+    <p class="read muted" style="margin-top:8px">Điểm dừng tốt: trên lối đi, cạnh mép bàn 30–50 cm về phía khách; không chấm giữa bàn hay chỗ ghế kéo ra.</p>
+
+    <h3>Kiểm tra theo bậc: hỏng bậc nào dừng ở bậc đó</h3>
+    <div class="cmd"><div class="lbl">a0 · broker trong máy chạy chưa</div><pre><code>mosquitto_sub -p 1884 -t '#' -C 1 -W 5 -v; echo "exit=$?"
+<span class="c"># "Timed out" / exit=27 là ĐÚNG (broker chạy, chưa có robot). "Connection refused" → tail -30 ~/robot/mosquitto.log</span></code></pre><button type="button">Chép</button></div>
+    <div class="cmd"><div class="lbl">a · robot gửi tin tới chưa</div><pre><code>mosquitto_sub -p 1884 -t 'valetudo/+/StatusStateAttribute/#' -t 'valetudo/+/BatteryStateAttribute/#' -t 'valetudo/+/$state' -v
+<span class="c"># phải thấy status docked/idle, level 87, $state ready</span></code></pre><button type="button">Chép</button></div>
+    <ol class="read" start="3" style="list-style:none;padding-left:0">
+      <li><b>a1 ·</b> Cấu hình → <b>Hệ thống</b>: không có dòng đỏ, thẻ R1 “Đã kết nối”, nhận tin cuối vài giây trước.</li>
+      <li><b>b ·</b> <code>station.html?role=ql</code>: R1 có pin, không báo mất kết nối.</li>
+      <li><b>c ·</b> <b>Chạy thử tới đây</b> trong Cấu hình: robot tới đúng điểm.</li>
+      <li><b>d ·</b> Trạm bếp giao 1 bàn cho R1: tới bếp → xác nhận → tới bàn → xác nhận → tự về sạc. Quay video.</li>
+      <li><b>e ·</b> Khi robot đang chạy: Tạm dừng, Chạy tiếp, DỪNG khẩn rồi nhả tại màn robot.</li>
+      <li><b>f ·</b> Nếu bật tính năng khách: quét QR một bàn → Gọi nhân viên → trạm nhận kêu; gọi robot tới bàn → Gọi món → trạm làm nhận đúng món; chuẩn bị phiếu → robot hiện QR đúng tổng → chuyển thử số nhỏ → xác nhận → đóng lượt.</li>
+    </ol>
+    <div class="note safe"><b>An toàn:</b> luôn có một người đứng cạnh robot, biết nút dừng vật lý trên robot. Màn hình trạm chỉ là điều khiển, không phải hệ an toàn.</div>
+
+    <h3>Nâng cấp từ bản cũ</h3>
+    <p class="read">Cấu hình lưu từ bản này là <b>version 2</b>. Cấu hình cũ vẫn chạy ngay, hiểu như hành vi cũ và không tự bật thêm gì; tab Tính năng báo “Cấu hình cũ…” cho tới khi bấm Lưu một lần.</p>
+    <ol class="read">
+      <li>Cấu hình → Sao lưu → <b>Tải xuống JSON</b>. Nên đóng hoặc ghi lại các phiếu đang mở.</li>
+      <li>Dừng Node-RED, đợi tiến trình thoát hẳn rồi chép context (lệnh dưới).</li>
+      <li>Cài gói mới bằng lệnh cách A hoặc B.</li>
+      <li>Tải lại mọi tablet: trạm, màn robot, trang QR đang mở.</li>
+      <li>Tab <b>Tính năng</b>: kiểm tra <b>Trạm nhận yêu cầu</b>, <b>Lưu</b> một lần để ghi version 2.</li>
+    </ol>
+    <div class="cmd"><div class="lbl">Sao lưu context trước khi cài (trong Termux)</div><pre><code>pkill -f start-nodered; pkill -f node-red
+while pgrep -f node-red >/dev/null; do sleep 1; done; sleep 2
+cp -r ~/robot/context ~/robot/context.bak-$(date +%Y%m%d-%H%M)</code></pre><button type="button">Chép</button></div>
+    <div class="note"><b>Quay lại bản cũ:</b> không bao giờ chạy bản cũ trên dữ liệu đã có phiếu tính tiền; bản cũ không biết phiếu, và Đã biết trên yêu cầu tính tiền sẽ xoá đơn của bàn. Dừng Node-RED như trên → <code>rm -rf ~/robot/context &amp;&amp; cp -r ~/robot/context.bak-&lt;thời điểm&gt; ~/robot/context</code> → cài gói cũ. Đơn, phiếu tạo sau khi nâng cấp mất khỏi app: đối chiếu lại bằng tay.</div>
+
+    <h3>Checklist đầu ca</h3>
+    <ul class="read">
+      <li>Robot online trên màn Giám sát, pin từ 80 % trở lên, không có dải cảnh báo.</li>
+      <li>Cấu hình → <b>Hệ thống</b>: “Mọi thứ bình thường”; tính năng đang dùng đúng như dự kiến, không có “Chưa đủ điều kiện”.</li>
+      <li>Trang Cấu hình không có cảnh báo vàng “bản đồ có thể đã vẽ lại”.</li>
+      <li>Chạy thử một chuyến tới bàn gần.</li>
+      <li>Lối đi chính không có ghế kéo ra, thùng, dây điện.</li>
+      <li>Trạm → <b>Tính tiền</b>: không còn phiếu chờ xác nhận từ ca trước (khách báo chuyển khoản → kiểm tra app ngân hàng).</li>
+      <li>Tablet trạm nhận yêu cầu đã chạm một lần để bật âm thanh.</li>
+    </ul>
+
+    <h3>Bản demo trên web</h3>
+    <p class="read">Thư mục <code>web/demo</code> chạy toàn bộ hệ thống trong trình duyệt (robot giả lập, mọi tính năng bật, không cần máy chủ). Sau khi sửa giao diện trong <code>trial/data/public</code>: <code>npm run web</code> để xuất sang <code>web/demo</code>, commit repo <code>web</code>, Vercel tự triển khai. Cấu hình khách tự sửa trong demo chỉ nằm trong trình duyệt của họ; nút “Xoá dữ liệu demo” xoá cả cấu hình đó, nhưng bị từ chối khi còn phiếu tính tiền đang mở.</p>
+  </div>
+</section>
+
+<section id="su-co">
+  <div class="wrap">
+    <div class="eyebrow">Phần 5</div>
+    <h2>Xử lý sự cố</h2>
+    <p class="lede read">Các mục đánh dấu commit là lỗi đã gặp khi cài trên điện thoại và robot thật qua RustDesk từ 26 đến 28/10/2026, hoặc tìm ra khi rà soát mã, đã sửa trong bản mới. Nhóm <b>Tính năng & tính tiền</b> là các trường hợp bị từ chối có chủ đích sau phase 2: đọc lý do và làm theo. Gặp lỗi đã sửa thì cập nhật bản mới nhất rồi chạy lại trình cài.</p>
+    <div class="filters" role="group" aria-label="Lọc theo nhóm">
+      <button type="button" data-f="all" aria-pressed="true">Tất cả</button>
+      <button type="button" data-f="install" aria-pressed="false">Cài đặt</button>
+      <button type="button" data-f="robot" aria-pressed="false">Kết nối robot</button>
+      <button type="button" data-f="run" aria-pressed="false">Trong ca</button>
+      <button type="button" data-f="guest" aria-pressed="false">Tính năng & tính tiền</button>
+      <button type="button" data-f="tablet" aria-pressed="false">Tablet</button>
+    </div>
+    <div class="issues" id="issues">
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Termux báo <code>CANNOT LINK EXECUTABLE "node"</code></div></div>
+        <div class="fix"><p>Node mới trên thư viện hệ thống cũ. Phải nâng cấp toàn bộ, không chỉ <code>pkg update</code>: <code>pkg upgrade -y</code> rồi chạy lại trình cài. Trình cài hiện tự làm việc này.</p></div>
+        <div class="src">commit <code>dc48dee</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Gõ lệnh dài, nhập mật khẩu qua RustDesk dễ sai</div></div>
+        <div class="fix"><p>Dùng cách B: bật <code>sshd</code> trong Termux và chạy <code>scripts/deploy.sh</code> từ Mac (SSH cổng 8022, <code>-t</code> để vẫn nhập được mật khẩu). Khác mạng thì dùng tên Tailscale thay IP.</p></div>
+        <div class="src">commit <code>dc48dee</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Giải nén gói làm trên Mac ra tệp rác <code>._*</code> và cảnh báo thuộc tính mở rộng</div></div>
+        <div class="fix"><p>Tar của macOS đóng kèm metadata Apple. <code>npm run pack</code> nay dùng <code>COPYFILE_DISABLE=1 tar --no-xattrs</code>. Đóng gói lại bằng lệnh này, đừng nén tay bằng Finder.</p></div>
+        <div class="src">commit <code>7ac411b</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Máy đã có một Node-RED khác dùng cổng 1880</div></div>
+        <div class="fix"><p>Cài vào cổng khác: <code>PORT=1881 bash ~/bundle/termux/install.sh</code>. Cổng được ghi vào <code>~/robot/.env</code> và dùng cho các lần sau.</p></div>
+        <div class="src">commit <code>7ac411b</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Cài xong báo “✅ đang chạy” nhưng tablet vẫn thấy giao diện cũ</div></div>
+        <div class="fix"><p>Một tiến trình Node-RED cũ còn giữ cổng và trả lời thay bản mới. Trình cài mới dừng mọi bản cũ, đợi cổng trống, và chỉ báo thành công khi <code>/api/map</code> trả lời. Làm tay: <code>pkill -x node</code> rồi chạy lại trình cài; tải lại trang trên tablet.</p></div>
+        <div class="src">commit <code>feaa8a5</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">“⚠️ Chưa chạy” ngay sau khi cài trên điện thoại yếu</div></div>
+        <div class="fix"><p>Lần khởi động đầu có thể mất hơn 10 giây. Trình cài nay đợi tới 2 phút. Vẫn lỗi thì xem <code>tail -50 ~/robot/node-red.log</code>.</p></div>
+        <div class="src">commit <code>7ac411b</code>, <code>feaa8a5</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Cài lại dừng ở bước <code>mosquitto_passwd</code></div></div>
+        <div class="fix"><p>Bản Mosquitto mới từ chối <code>-c</code> khi tệp mật khẩu đã có. Trình cài nay xoá tệp trước; mật khẩu thật vẫn giữ trong <code>~/robot/.mqtt-pass</code> nên robot không phải khai lại.</p></div>
+        <div class="src">commit <code>c4b29c2</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Trình cài thoát ngay ở dòng đầu, không in gì</div></div>
+        <div class="fix"><p>Bản trình cài có lỗi ở dòng <code>pkill</code> (thiếu <code>|| true</code>). Tải gói mới nhất rồi chạy lại.</p></div>
+        <div class="src">commit <code>656787d</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Nâng cấp từ bản cũ, mất danh sách bàn</div></div>
+        <div class="fix"><p>Bản cũ giữ cấu hình trong <code>site.json</code>; trình cài nay giữ nó vào context trước khi thay file mẫu, và lưu bản sao <code>~/robot/site.json.old</code>. Vẫn mất thì chép sang Downloads (<code>termux-setup-storage</code>, <code>cp ~/robot/site.json.old ~/storage/downloads/</code>) → Cấu hình → Sao lưu → <b>Nhập JSON</b> → Lưu.</p><p class="muted">File quá cũ không có danh sách robot thì trình cài dừng để tránh ghi đè: Nhập JSON và Lưu bằng bản đang chạy trước khi nâng cấp.</p></div>
+        <div class="src">commit <code>9959e17</code>, <code>750db0a</code></div>
+      </div>
+
+      <div class="issue" data-g="install">
+        <div><span class="tag install">Cài đặt</span><div class="sym">Trình cài dừng vì context lỗi JSON</div></div>
+        <div class="fix"><p>Có ý dừng để không ghi đè dữ liệu hỏng. Khôi phục <code>~/robot/context</code> từ bản <code>context.bak-…</code> gần nhất, hoặc Nhập JSON đã tải xuống sau khi cài.</p></div>
+        <div class="src">runbook Valetudo §2d</div>
+      </div>
+
+      <div class="issue" data-g="robot">
+        <div><span class="tag robot">Kết nối robot</span><div class="sym">“R1 mất kết nối” dù <code>mosquitto_sub</code> thấy tin của robot</div></div>
+        <div class="fix"><p>Robot được khai sau khi Node-RED đã đăng ký nhận tin nên không thấy <code>$state</code> lưu sẵn. Đã sửa: bất kỳ tin nào từ robot cũng tính là còn sống. Cập nhật bản mới.</p></div>
+        <div class="src">commit <code>18d01c6</code></div>
+      </div>
+
+      <div class="issue" data-g="robot">
+        <div><span class="tag robot">Kết nối robot</span><div class="sym">Dải đỏ “IP điện thoại đã đổi từ … sang …” (robot từng chạy được, hôm sau mất kết nối)</div></div>
+        <div class="fix"><p>Router cấp IP mới; robot, URL trên tablet và mã QR vẫn trỏ IP cũ. Valetudo → Connectivity → MQTT → Host = IP mới; mở lại trang trên tablet; <b>in lại QR ở bàn</b>. Rồi Cấu hình → <b>Hệ thống</b> → <b>Đã cập nhật robot và QR</b>: dải trên trạm tự mất.</p><p>Gốc: đặt <b>IP cố định</b> cho điện thoại trên router (DHCP reservation). Mất Wi-Fi tạm thời không gây cảnh báo này.</p></div>
+        <div class="src">tab Hệ thống · commit <code>d38207c</code></div>
+      </div>
+
+      <div class="issue" data-g="robot">
+        <div><span class="tag robot">Kết nối robot</span><div class="sym">Dải đỏ “Broker MQTT trong máy không chạy”</div></div>
+        <div class="fix"><p>Mosquitto trên điện thoại đã tắt quá 5 giây; mọi robot thật mất điều khiển. Trong Termux: <code>mosquitto -c ~/robot/mosquitto.conf -d</code> hoặc chạy lại trình cài. Broker chạy lại là dải tự mất.</p><p class="muted">Chỉ báo khi cấu hình có robot Valetudo. Dải này đứng trên dải “R1 mất kết nối”, nên đọc dải broker trước.</p></div>
+        <div class="src">tab Hệ thống · commit <code>d38207c</code></div>
+      </div>
+
+      <div class="issue" data-g="robot">
+        <div><span class="tag robot">Kết nối robot</span><div class="sym">Tab Hệ thống: Wi-Fi robot “không rõ”, trạng thái hoặc bản đồ trống ngay sau khi khai robot</div></div>
+        <div class="fix"><p>Bản cũ không nhận lại các tin robot lưu sẵn khi robot được khai sau. Đã sửa: khi Lưu, Node-RED đăng ký topic mới và nhận ngay trạng thái, Wi-Fi, bản đồ. Còn trống thì robot chưa từng gửi: trong Valetudo tắt rồi bật MQTT. Đổi topic thì bản đồ cũ bị bỏ, chờ bản đồ mới rồi định vị lại các điểm.</p></div>
+        <div class="src">commit <code>bd8d2b3</code></div>
+      </div>
+
+      <div class="issue" data-g="robot">
+        <div><span class="tag robot">Kết nối robot</span><div class="sym">Bậc a không thấy tin nào</div></div>
+        <div class="fix"><p>Sai Host, sai user/mật khẩu (Valetudo → MQTT hiện lỗi), robot và điện thoại khác Wi-Fi, hoặc mạng khách cách ly thiết bị.</p></div>
+        <div class="src">runbook Valetudo</div>
+      </div>
+
+      <div class="issue" data-g="robot">
+        <div><span class="tag robot">Kết nối robot</span><div class="sym">Ban đêm hoặc sau khi khoá màn hình, mọi tablet mất kết nối</div></div>
+        <div class="fix"><p>Android tắt Termux chạy nền. Script tự chạy giữ CPU thức và canh Mosquitto mỗi 15 giây; nên tắt tối ưu pin cho Termux trong cài đặt Android và để máy luôn cắm sạc.</p></div>
+        <div class="src">commit <code>b9403c6</code></div>
+      </div>
+
+      <div class="issue" data-g="robot">
+        <div><span class="tag robot">Kết nối robot</span><div class="sym">“R1 bị chặn” khi robot đang ở dock, chưa giao việc</div></div>
+        <div class="fix"><p>Valetudo báo lỗi không liên quan di chuyển (hộp rác chưa lắp, cảm biến bẩn…). Xem lỗi trên Valetudo, xử lý tại robot; hết lỗi là hết cảnh báo.</p></div>
+        <div class="src">runbook Valetudo</div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Robot rời dock bị báo chặn sau khoảng 10 giây</div></div>
+        <div class="fix"><p>Robot quay đầu chậm. Cấu hình → Robot → Nâng cao: tăng <code>nomoveSec</code> lên 20–30.</p></div>
+        <div class="src">commit <code>19f661b</code></div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">“R1 không có lộ trình tới …”</div></div>
+        <div class="fix"><p>Điểm đó chưa được định vị cho R1. Cấu hình → Điểm & bản đồ → định vị → Lưu. Không cần khởi động lại. Cửa đón khách mới thêm cũng cần định vị.</p></div>
+        <div class="src">commit <code>9959e17</code></div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Robot “Xin nhường đường” rồi tự đi tiếp</div></div>
+        <div class="fix"><p>Bình thường. Robot gửi lại lệnh mỗi <code>retrySec</code> (15 s), sau <code>retryMax</code> lần mới báo trạm. Muốn đi ngay: <b>Đã dọn lối đi</b> trên dải cảnh báo.</p></div>
+        <div class="src">runbook Valetudo</div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Robot dừng gần điểm nhưng hay phải thử lại</div></div>
+        <div class="fix"><p>Tăng <code>arriveCm</code> (ví dụ 60), hoặc định vị lại bằng <b>Dùng vị trí robot</b> ngay chỗ robot dừng được.</p></div>
+        <div class="src">runbook Valetudo</div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Robot đi sai chỗ, Cấu hình hiện cảnh báo vàng về bản đồ</div></div>
+        <div class="fix"><p>Valetudo đã vẽ lại bản đồ nên toạ độ cũ sai. Bật persistent map, định vị lại các điểm.</p></div>
+        <div class="src">runbook Valetudo</div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Robot khựng khoảng 2 giây khi đổi đích hoặc Đổi bàn</div></div>
+        <div class="fix"><p>Cố ý: robot dừng hẳn rồi mới nhận đích mới để chạy được trên mọi model. (Bản cũ còn cho robot về dock trước khi xét hàng chờ; đã sửa.)</p></div>
+        <div class="src">commit <code>bfcd326</code></div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Bếp gửi nhầm bàn</div></div>
+        <div class="fix"><p>Robot còn đang đi: hàng chờ hoặc thẻ Lệnh gần nhất → <b>Đổi bàn</b> → chạm bàn đúng. Bị từ chối “robot đã tới bàn”: dùng <b>Trả lại bếp</b> hoặc thu hồi. “Bàn đã có trong chuyến”: bàn mới đã nhận khay khác trong cùng chuyến.</p></div>
+        <div class="src">phase 2 · <code>9e5425e</code></div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Cấu hình báo “Máy khác vừa lưu” hoặc “Tải lại rồi sửa lại” dù không ai lưu</div></div>
+        <div class="fix"><p>Wi-Fi của tablet chập chờn hoặc Node-RED vừa khởi động lại; bản cũ coi lần kết nối lại là một bản lưu mới. Đã sửa: bản nháp giữ nguyên; bấm <b>Lưu</b> lúc đang mất kết nối thì báo ngay “chưa lưu”.</p></div>
+        <div class="src">rà soát 30/10</div>
+      </div>
+
+      <div class="issue" data-g="run">
+        <div><span class="tag run">Trong ca</span><div class="sym">Xoá một trạm rồi Lưu bị từ chối; Pin yếu đặt cao hơn Pin đủ</div></div>
+        <div class="fix"><p>Xoá điểm thì vai trò dùng nó làm vị trí được để trống; khu rửa và chỗ sạc robot đang dùng không xoá được. Trạm còn là trạm làm của một danh mục thực đơn hoặc là trạm nhận yêu cầu thì Lưu báo lỗi đỏ: đổi ở tab Tính năng trước. Pin yếu phải thấp hơn Pin đủ.</p></div>
+        <div class="src">rà soát 30/10 · phase 2</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Bật tính năng rồi mà nút không hiện trên QR / robot, hoặc khách bấm bị từ chối</div></div>
+        <div class="fix"><p>Tính năng đang <b>Chưa đủ điều kiện</b>: thiếu trạm nhận yêu cầu, thực đơn chưa có món hay giá, danh mục chưa có trạm làm, thiếu ngân hàng / số tài khoản / tên chủ tài khoản. Tab Tính năng ghi lý do và có nút tới chỗ sửa. Sửa xong <b>Lưu</b>, tải lại trang khách.</p></div>
+        <div class="src">tab Tính năng · <code>f24a2b3</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Khách bấm Gọi nhân viên mà trạm không kêu</div></div>
+        <div class="fix"><p>Chỉ tablet của <b>Trạm nhận yêu cầu</b> kêu; trạm khác chỉ hiện dải. Kiểm tra trạm nhận trong tab Tính năng, và chạm màn tablet đó một lần để trình duyệt cho phát âm thanh.</p></div>
+        <div class="src">phase 2</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Khách bấm Gọi nhân viên nhiều lần nhưng chỉ có một cảnh báo</div></div>
+        <div class="fix"><p>Bình thường: một cảnh báo mỗi bàn mỗi loại cho tới khi có người bấm <b>Đã biết</b>; sau đó khách bấm lại mới ra cảnh báo mới. Nút trên trang QR nghỉ 30 giây sau mỗi lần chạm.</p></div>
+        <div class="src">phase 2 · <code>65ee4f1</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Không thấy nút Dẫn khách tới bàn</div></div>
+        <div class="fix"><p>Robot chỉ dẫn khách khi đang chờ ở <b>trạm</b> hoặc <b>cửa đón khách</b>: gọi robot tới đó trước. Chưa có cửa đón thì tab Điểm & bản đồ → <b>+ Thêm cửa</b>, định vị, Lưu.</p></div>
+        <div class="src">phase 2 · <code>024f3b8</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Robot thật không có nút Đi chậm hơn</div></div>
+        <div class="fix"><p>Valetudo không cho chỉnh tốc độ nên nút bị ẩn, lệnh tốc độ bị máy chủ từ chối. Chỉ robot giả lập có nút này. Khách đi chậm thì nhân viên đi kèm.</p></div>
+        <div class="src">spec chính sách tính năng</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Khách bấm Báo nhầm món nhưng robot vẫn đi tiếp</div></div>
+        <div class="fix"><p>Đúng với cách xử lý <b>Báo nhân viên</b>: trạm xuất phát của chuyến nhận cảnh báo, nhân viên tới bàn và tự thu hồi nếu cần. Muốn khách tự gửi món về: tab Tính năng → Khách trả/huỷ món → <b>Khách tự gửi trả</b>.</p></div>
+        <div class="src">spec chính sách tính năng</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Robot báo “Robot phải đi — đơn chưa gửi”</div></div>
+        <div class="fix"><p>Khách đang chọn món thì robot hết thời gian chờ ở bàn và rời đi; giỏ chưa gửi bị bỏ. Gọi robot tới lại, hoặc nhân viên nhận món. Hay gặp thì tăng <b>Robot được gọi tới chờ tối đa</b> ở tab Vai trò & thời gian.</p></div>
+        <div class="src">phase 2 · <code>024f3b8</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính tiền</span><div class="sym">Gọi món bị từ chối “Bàn đang tính tiền”</div></div>
+        <div class="fix"><p>Bàn có phiếu đang mở. Khách muốn gọi thêm: nhân viên <b>Vô hiệu hóa phiếu</b> (nếu chưa thu) hoặc <b>Đóng lượt</b> (nếu đã thu), rồi gọi món lại.</p></div>
+        <div class="src">tính tiền · <code>8329c6b</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính tiền</span><div class="sym">Không thấy nút Thanh toán trên robot</div></div>
+        <div class="fix"><p>Cần đủ: Thanh toán QR đang bật và đủ điều kiện, robot đứng tại bàn đó (không phải lúc đang giao món), và nhân viên đã <b>Chuẩn bị phiếu</b> cho bàn ở chế độ Tính tiền.</p></div>
+        <div class="src">tính tiền</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính tiền</span><div class="sym">Màn thanh toán không có VietQR, chỉ có ảnh QR tĩnh hoặc số tài khoản</div></div>
+        <div class="fix"><p>Tablet robot không ra được Internet (ảnh VietQR tải từ <code>img.vietqr.io</code>). QR tĩnh không chứa số tiền: khách phải tự gõ đúng tổng. Cho Wi-Fi nhà hàng ra Internet, hoặc tải ảnh QR tĩnh ở tab Tính năng làm dự phòng.</p></div>
+        <div class="src">phase 2 · <code>1176729</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính tiền</span><div class="sym">Đóng lượt tính tiền bị từ chối</div></div>
+        <div class="fix"><p>Bàn còn đơn mới ngoài phiếu (khách gọi thêm sau khi chuẩn bị phiếu), hoặc robot còn đang giao tới bàn. Chờ giao xong; đơn mới thì tính trong lượt sau.</p></div>
+        <div class="src">tính tiền · <code>47b80d3</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính tiền</span><div class="sym">Lưu cấu hình bị từ chối khi đổi ngân hàng hoặc số tài khoản</div></div>
+        <div class="fix"><p>Còn phiếu chờ khách trả; QR khách đang thấy sẽ sai tài khoản. Hoàn tất hoặc vô hiệu hóa các phiếu ở các bàn được nêu rồi lưu lại. Chỉ tắt Thanh toán thì vẫn lưu được.</p></div>
+        <div class="src">tính tiền</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính tiền</span><div class="sym">Khách báo đã chuyển nhưng app ngân hàng chưa thấy tiền</div></div>
+        <div class="fix"><p>Không bấm Xác nhận đã thu tiền. Tới bàn hỏi khách, kiểm tra nội dung chuyển khoản (<code>Ban 05 phieu 12</code>). Nếu phải huỷ phiếu: Vô hiệu hóa phiếu với lý do, kiểm tra giao dịch trước khi tạo phiếu mới.</p></div>
+        <div class="src">runbook Valetudo §2c</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Lưu cấu hình báo “trang cấu hình đã cũ — tải lại trang”</div></div>
+        <div class="fix"><p>Sau khi nâng cấp và đã lưu version 2, tablet còn giữ trang Cấu hình cũ trong cache. Tải lại trang rồi sửa lại. Tương tự “Màn thanh toán đã cũ” trên robot: tải lại màn robot.</p></div>
+        <div class="src">nâng cấp v2 · <code>750db0a</code></div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính năng</span><div class="sym">Tab Tính năng hiện dải “Cấu hình cũ…” sau khi nâng cấp</div></div>
+        <div class="fix"><p>Cấu hình lưu bởi bản trước đã được hiểu như hành vi cũ, không tự bật gì. Kiểm tra <b>Trạm nhận yêu cầu</b> (mặc định là trạm đầu tiên), xem các công tắc, rồi <b>Lưu</b> một lần.</p></div>
+        <div class="src">nâng cấp v2</div>
+      </div>
+
+      <div class="issue" data-g="guest">
+        <div><span class="tag bill">Tính tiền</span><div class="sym">Bản demo: “Xoá dữ liệu demo” bị từ chối</div></div>
+        <div class="fix"><p>Còn phiếu tính tiền đang mở. Vô hiệu hóa hoặc đóng lượt các phiếu đó rồi xoá lại.</p></div>
+        <div class="src">demo · <code>77afd72</code></div>
+      </div>
+
+      <div class="issue" data-g="tablet">
+        <div><span class="tag tablet">Tablet</span><div class="sym">Màn hình bị cuộn, nút lệnh trôi khỏi màn, bản đồ không vẽ robot</div></div>
+        <div class="fix"><p>Chrome hoặc Android System WebView quá cũ. Cập nhật Chrome (từ 108 trở lên; tối thiểu 99 cho bản đồ robot). Danh sách điểm trong Cấu hình xếp chồng thay vì thẳng cột trên Chrome dưới 117, vẫn dùng được.</p></div>
+        <div class="src">commit <code>cf6dc61</code></div>
+      </div>
+
+      <div class="issue" data-g="tablet">
+        <div><span class="tag tablet">Tablet</span><div class="sym">Tablet không kêu khi robot tới hoặc khách gọi</div></div>
+        <div class="fix"><p>Trình duyệt chỉ phát âm thanh sau một lần chạm. Màn robot: chạm <b>Chạm để khởi động</b>. Màn trạm: chạm bất kỳ chỗ nào một lần (nút trên thanh trên chuyển thành <b>Âm thanh bật</b>).</p></div>
+        <div class="src">rà soát 30/10</div>
+      </div>
+
+      <div class="issue" data-g="tablet">
+        <div><span class="tag tablet">Tablet</span><div class="sym">Nhiều cảnh báo khách đẩy lưới bàn xuống nửa màn trạm</div></div>
+        <div class="fix"><p>Bấm <b>Đã biết</b> khi đã xử lý. Đơn gọi món, yêu cầu tính tiền vẫn còn trong chế độ Tính tiền sau khi tắt cảnh báo. Giờ cao điểm nên đặt trạm nhận yêu cầu ở tablet không dùng để điều phối.</p></div>
+        <div class="src">ghi nhận phase 2 · chưa đổi giao diện</div>
+      </div>
+
+      <div class="issue" data-g="tablet">
+        <div><span class="tag tablet">Tablet</span><div class="sym">Màn trạm đứng sau khi thêm robot hoặc bàn trong Cấu hình</div></div>
+        <div class="fix"><p>Bản cũ chỉ vẽ sơ đồ một lần. Đã sửa: trạm vẽ lại khi cấu hình đổi. Với bản cũ, tải lại trang.</p></div>
+        <div class="src">commit <code>cf6dc61</code></div>
+      </div>
+
+      <div class="issue" data-g="tablet">
+        <div><span class="tag tablet">Tablet</span><div class="sym">Tablet ngang nhỏ hiện bố cục dọc, lưới bàn bị dồn</div></div>
+        <div class="fix"><p>Màn rộng 900 px trở xuống được coi là “dọc”. Thiết kế cho 1280×800. Kiểm tra kích thước thật trên tablet (mở trang, xem <code>innerWidth</code>) trước khi mua thiết bị.</p></div>
+        <div class="src">đang chờ xác nhận</div>
+      </div>
+
+    </div>
+
+    <h3>Khi vẫn chưa rõ</h3>
+    <div class="cmd"><pre><code>tail -50 ~/robot/node-red.log       <span class="c"># lỗi máy chủ</span>
+tail -30 ~/robot/mosquitto.log      <span class="c"># lỗi broker</span>
+cat ~/robot/.env                    <span class="c"># cổng đang dùng</span>
+cat ~/robot/.mqtt-pass              <span class="c"># mật khẩu MQTT cho Valetudo</span>
+ls ~/robot/context.bak-*            <span class="c"># các bản sao lưu context trước khi nâng cấp</span></code></pre><button type="button">Chép</button></div>
+    <p class="read" style="margin-top:12px">Mọi chuyến kết thúc bất thường được ghi ở tab <b>Nhật ký</b> trên màn Giám sát, ví dụ <code>R1: chuyến tới Bàn 05 dừng ở 1234,567 (cách 180 cm), status=idle, lỗi=-</code>. Mọi yêu cầu khách bị từ chối gửi lý do về đúng màn đã bấm; đọc toast hoặc dải trên màn đó trước khi đoán.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">MEKONIQ Serve S1 · repo <code>trial</code> và <code>web</code>, nhánh <code>main</code> sau khi merge phase 2 (<code>63feac7</code>) · ảnh chụp từ bản demo trình duyệt ngày 31/10/2026 (tab Hệ thống, thiết kế lộ trình: ảnh 29–30/10) · runbook đầy đủ: <code>trial/docs/valetudo-setup.md</code> · thiết kế tính năng và tính tiền: <code>docs/superpowers/specs/2026-10-30-restaurant-feature-policy-design.md</code></div>
+</footer>
+
+<script>
+document.querySelectorAll('.cmd button').forEach(btn => btn.addEventListener('click', () => {
+  const code = btn.parentElement.querySelector('code');
+  const text = [...code.childNodes].filter(n => !(n.classList && n.classList.contains('c'))).map(n => n.textContent).join('').replace(/[ \t]+$/gm, '').trim();
+  const done = () => { btn.textContent = 'Đã chép'; setTimeout(() => btn.textContent = 'Chép', 1600); };
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents(code); const s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = 'Đã chọn, nhấn ⌘C'; };
+  try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+}));
+// IP input -> every [data-t] becomes a real address: a link (data-link) and a copy button. Kept in this browser only.
+const IPRE = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+const COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+const TICK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
+const ipEl = document.getElementById('ip'), portEl = document.getElementById('port'), ipMsg = document.getElementById('ipmsg');
+const escH = v => String(v).replace(/[&<>"]/g, c => '&#' + c.charCodeAt(0) + ';');
+try { const v = JSON.parse(localStorage.getItem('mekoniq.manual.ip') || '{}'); ipEl.value = v.ip || ''; portEl.value = v.port || ''; } catch (e) {}
+function fillAddrs() {
+  const ip = ipEl.value.trim(), port = portEl.value.trim() || '1880';
+  const okIp = IPRE.test(ip), okPort = /^\d{2,5}$/.test(port) && +port <= 65535, ok = okIp && okPort;
+  ipEl.setAttribute('aria-invalid', !!ip && !okIp); portEl.setAttribute('aria-invalid', !okPort);
+  ipMsg.className = 'ipmsg' + ((ip && !okIp) || !okPort ? ' bad' : '');
+  ipMsg.textContent = ip && !okIp ? 'IP chưa đúng dạng, ví dụ 192.168.1.23' : !okPort ? 'Cổng là số từ 10 đến 65535 (mặc định 1880)'
+    : ok ? 'Bấm link để mở, hoặc nút chép để dán sang RustDesk. Chỉ lưu trong trình duyệt này.' : 'Điền IP để các địa chỉ bên dưới thành link mở được và chép nhanh sang RustDesk. Chỉ lưu trong trình duyệt này.';
+  for (const el of document.querySelectorAll('[data-t]')) {
+    const t = el.dataset.t;
+    if (!ok) { el.innerHTML = el.dataset.empty ? escH(el.dataset.empty) : `<span class="ph">${escH(t.replace('{ip}', '<IP>').replace('{port}', '1880'))}</span>`; continue; }
+    const v = t.replace('{ip}', ip).replace('{port}', port);
+    el.innerHTML = `<span class="addr">${el.hasAttribute('data-link') ? `<a href="${escH(v)}" target="_blank" rel="noopener">${escH(v)}</a>` : `<span>${escH(v)}</span>`}<button type="button" class="cp" data-copy="${escH(v)}" aria-label="Chép ${escH(v)}" title="Chép">${COPY}</button></span>`;
+  }
+  try { localStorage.setItem('mekoniq.manual.ip', JSON.stringify({ ip, port: portEl.value.trim() })); } catch (e) {}
+}
+// Clipboard API may be blocked inside the artifact frame: fall back to a hidden textarea + execCommand.
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) {}
+  const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0';
+  document.body.append(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch (e) {} ta.remove(); return ok;
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('.cp'); if (!b) return;
+  const ok = await copyText(b.dataset.copy);
+  b.classList.toggle('ok', ok); b.innerHTML = ok ? TICK : COPY; b.title = ok ? 'Đã chép' : 'Không chép được, chọn chữ rồi chép tay';
+  setTimeout(() => { b.classList.remove('ok'); b.innerHTML = COPY; b.title = 'Chép'; }, 1400);
+});
+ipEl.addEventListener('input', fillAddrs); portEl.addEventListener('input', fillAddrs); fillAddrs();
+
+const fbtns = document.querySelectorAll('.filters button');
+fbtns.forEach(b => b.addEventListener('click', () => {
+  fbtns.forEach(x => x.setAttribute('aria-pressed', x === b));
+  document.querySelectorAll('.issue').forEach(i => { i.hidden = b.dataset.f !== 'all' && i.dataset.g !== b.dataset.f; });
+}));
+const links = document.querySelectorAll('.seg a');
+const mark = () => { let cur = ''; for (const s of document.querySelectorAll('main section')) if (s.getBoundingClientRect().top < 120) cur = s.id; links.forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + cur)); };
+addEventListener('scroll', mark, { passive: true }); mark();
+</script>
+
+</body></html>
