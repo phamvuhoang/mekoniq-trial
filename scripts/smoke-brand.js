@@ -9,6 +9,28 @@ const path = require('node:path');
  const browser = await chromium.launch({headless:true, executablePath:process.env.PLAYWRIGHT_CHROMIUM});
  const results=[];
  try {
+ if (process.env.BRAND_SETUP_LAYOUT_ONLY) {
+  const page=await browser.newPage({reducedMotion:'reduce'});
+  for (const width of [390,800,1280]) {
+   await page.setViewportSize({width,height:1400});
+   await page.goto('http://127.0.0.1:1891/setup.html');
+   await page.waitForFunction(()=>typeof D!=='undefined'&&D&&!dirty&&!saving);
+   await page.evaluate(()=>document.fonts.ready);
+   const clipped=await page.locator('.appbar [data-tab]').evaluateAll(buttons=>buttons.filter(button=>{
+    const range=document.createRange();range.selectNodeContents(button);
+    const text=range.getBoundingClientRect(),box=button.getBoundingClientRect();
+    return text.left<box.left||text.right>box.right||text.top<box.top||text.bottom>box.bottom;
+   }).map(button=>button.textContent));
+   assert.deepEqual(clipped,[],width+' setup tab text stays inside its button');
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+   assert.equal(await page.locator('#save').isDisabled(),true);
+   assert.equal(await page.locator('#save').evaluate(e=>getComputedStyle(e).color),'rgb(168, 194, 198)');
+   await page.screenshot({path:path.join(out,'setup-layout-'+width+'.png'),fullPage:true});
+  }
+  await page.close();
+  console.log('BRAND_SETUP_LAYOUT_OK: tab text bounds and disabled Save at 390/800/1280');
+  return;
+ }
  if (process.env.BRAND_ARMED_ONLY) {
   const checks=[];
   for (const [route,id] of [['setup.html?tab=backup','reset'],['map.html','defaults']]) {

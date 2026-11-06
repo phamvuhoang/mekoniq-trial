@@ -165,7 +165,7 @@
   @media (orientation: portrait), (max-width: 900px) {
     .appbar { height: auto; flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; }
     .appbar .seg.dark { order: 9; flex: 1 0 100%; }
-    .appbar .seg.dark button { flex: 1; }
+    .appbar .seg.dark button { flex: 1 0 auto; }
     #tab-points { grid-template: minmax(0, 1.3fr) minmax(0, 1fr) / minmax(0, 1fr); }
     #tab-robots { grid-template: none / repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); overflow: auto; }
     #robots, #robots.many { display: contents; }
@@ -178,7 +178,7 @@
   }
   :root[data-orient=portrait] .appbar { height: auto; flex-wrap: wrap; row-gap: 8px; padding: 10px 12px; }
   :root[data-orient=portrait] .appbar .seg.dark { order: 9; flex: 1 0 100%; }
-  :root[data-orient=portrait] .appbar .seg.dark button { flex: 1; }
+  :root[data-orient=portrait] .appbar .seg.dark button { flex: 1 0 auto; }
   :root[data-orient=portrait] #tab-points { grid-template: minmax(0, 1.3fr) minmax(0, 1fr) / minmax(0, 1fr); }
   :root[data-orient=portrait] #tab-robots { grid-template: none / repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); overflow: auto; }
   :root[data-orient=portrait] #robots, :root[data-orient=portrait] #robots.many { display: contents; }
