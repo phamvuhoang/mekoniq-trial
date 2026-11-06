@@ -4,11 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/test.js && node scripts/test-valetudo.js && node scripts/test-site.js && node scripts/test-feature-policy.js && node scripts/test-billing.js && node scripts/test-guest-policy.js && node scripts/test-health.js && node scripts/test-review.js && node scripts/test-review-followup.js",
+    "test": "npm run check:brand && node scripts/test.js && node scripts/test-valetudo.js && node scripts/test-site.js && node scripts/test-feature-policy.js && node scripts/test-billing.js && node scripts/test-guest-policy.js && node scripts/test-health.js && node scripts/test-review.js && node scripts/test-review-followup.js",
     "start": "node-red -u data -s data/settings.js",
     "pack": "sh scripts/pack.sh",
     "smoke": "node scripts/smoke-test.js",
-    "web": "sh scripts/export-web.sh"
+    "web": "sh scripts/export-web.sh",
+    "check:brand": "node scripts/check-brand.cjs --dir data/public/brand"
   },
   "keywords": [],
   "author": "",
