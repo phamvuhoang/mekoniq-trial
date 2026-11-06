@@ -81,6 +81,28 @@ test('guide readiness respects closed and one-way lanes in the supplied map', ()
 
 const os = require('node:os'), path = require('node:path'), { spawnSync } = require('node:child_process');
 const installer = fs.readFileSync(__dirname + '/../termux/install.sh', 'utf8');
+const dependencyStep = installer.slice(installer.indexOf('if ! command -v node-red'), installer.indexOf('# MQTT broker'));
+for (const npmVersion of ['11.19.1', '12.2.2']) test(`installer bootstraps Node-RED with npm ${npmVersion}`, () => {
+  const mocks = `
+    node() { return 1; }
+    pkg() { return 0; }
+    npm() {
+      case "$*" in
+        --version) printf '%s\\n' "$INSTALLER_TEST_NPM_VERSION" ;;
+        'install -g node-red@5.0.8')
+          [ "$INSTALLER_TEST_NPM_VERSION" = '11.19.1' ] || return 64
+          printf 'installed\\n' ;;
+        'exec --yes --package=npm@11.19.1 -- npm install -g node-red@5.0.8') printf 'installed\\n' ;;
+        *) return 65 ;;
+      esac
+    }
+  `;
+  const r = spawnSync('sh', ['-ec', mocks + dependencyStep], {
+    env: { ...process.env, INSTALLER_TEST_NPM_VERSION: npmVersion }, encoding: 'utf8'
+  });
+  assert.equal(r.status, 0, `dependency bootstrap failed: ${r.stderr}`);
+  assert.equal(r.stdout.trim(), 'installed');
+});
 const copyStep = installer.slice(installer.indexOf('node "$HERE/scripts/preserve-site.js"'), installer.indexOf('# MQTT: the robot connects'));
 for (const scenario of ['unsaved', 'saved', 'fresh', 'corrupt']) test(`installer preserves effective site: ${scenario}`, t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'robot-upgrade-test-'));

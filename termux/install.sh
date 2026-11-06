@@ -21,7 +21,15 @@ if ! command -v node-red >/dev/null || ! node -v >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   pkg upgrade -y -o Dpkg::Options::=--force-confnew
   pkg install -y -o Dpkg::Options::=--force-confnew nodejs-lts termux-api
-  npm install -g --unsafe-perm node-red@5.0.8
+  # npm 12 rejects the old unsafe-perm flag and cannot resolve this pinned
+  # Node-RED dependency tree with its default remote-package policy.
+  # Use a compatible CLI for this install only; keep Termux's npm unchanged.
+  installer_npm_version=$(npm --version)
+  if [ "${installer_npm_version%%.*}" -ge 12 ]; then
+    npm exec --yes --package=npm@11.19.1 -- npm install -g node-red@5.0.8
+  else
+    npm install -g node-red@5.0.8
+  fi
 fi
 # MQTT broker for the Valetudo robot (devices installed before it was added).
 command -v mosquitto >/dev/null || pkg install -y -o Dpkg::Options::=--force-confnew mosquitto
