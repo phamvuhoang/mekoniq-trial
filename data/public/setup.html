@@ -2,7 +2,10 @@
 <html lang="vi"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MEKONIQ Serve · Cấu hình</title>
-<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand.css">
+<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand/tokens.css">
+<link rel="stylesheet" href="brand/fonts.css">
+<link rel="stylesheet" href="brand/components.css">
+<link rel="stylesheet" href="brand.css">
 <style>
   /* Manager's config page (spec 4.5): every operational setting, saved live to the orchestrator (no site.json editing).
      Tabs in the app bar; each tab fits one screen, long lists scroll inside their card. */
@@ -12,10 +15,10 @@
   .appbar .title { flex: 1 1 0; min-width: 120px; max-width: max-content; }
   .appbar .title b, .appbar .title small { overflow: hidden; text-overflow: ellipsis; }
   .appbar .seg.dark button { padding: 8px 14px; }
-  .appbar .btn { min-height: 40px; padding: 8px 14px; border-color: #3c5f5c; color: var(--card); }
+  .appbar .btn { min-height: 44px; padding: 8px 14px; border-color: #3c5f5c; color: var(--fg); }
   .appbar .btn.primary { border-color: var(--mint); color: var(--deep); }
-  .appbar .btn:disabled { opacity: .4; }
-  .appbar .pill { color: var(--deep); }
+  .appbar .btn:disabled { opacity: 1; }
+  .appbar .pill { color: var(--fg); }
   .strip .grow { white-space: pre-wrap; }
 
   .screen > .body { grid-template: minmax(0, 1fr) / minmax(0, 1fr); }
@@ -24,10 +27,10 @@
   .col { display: flex; flex-direction: column; gap: 10px; }
   .id { font: 500 12px var(--mono); color: var(--muted); }
   .id.vi { font-family: var(--font); }
-  input[type=number], select { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 10px; min-height: 40px; }
+  input[type=number], select { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 8px 10px; min-height: 44px; }
   input[type=number] { width: 84px; }
   .seg.sm button { min-height: 38px; padding: 6px 12px; font-size: 13px; }
-  .lbl { font-size: 12px; font-weight: 800; color: var(--muted); }
+  .lbl { font-size: 12px; font-weight: 700; color: var(--muted); }
 
   /* Stepper with a typeable value: tapping the number edits it directly. */
   .stepper { flex: none; }
@@ -41,10 +44,10 @@
   .maphead .eyebrow { margin: 0; flex: 1; min-width: 0; }
   .mapbox { position: relative; flex: 1; min-height: 0; border-radius: 12px; overflow: hidden; background: var(--light); }
   .mapbox canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: manipulation; }
-  .mapbox .warnmap { position: absolute; left: 10px; top: 10px; right: 10px; background: var(--accent); color: var(--alert-ink); border-radius: 10px; padding: 8px 12px; font-weight: 800; font-size: 13px; }
+  .mapbox .warnmap { position: absolute; left: 10px; top: 10px; right: 10px; background: var(--accent); color: var(--alert-ink); border-radius: 10px; padding: 8px 12px; font-weight: 700; font-size: 13px; }
   .selrow { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-height: 52px; }
   .selrow .who { flex: 1; min-width: 160px; }
-  .selrow .who b { display: block; font-size: 17px; font-weight: 900; line-height: 1.2; }
+  .selrow .who b { display: block; font-size: 17px; font-weight: 700; line-height: 1.2; }
   .selrow .ptpos { display: contents; }
   .arrows { display: flex; gap: 4px; }
   .arrows .btn.sm { width: 44px; min-height: 44px; padding: 0; font-size: 18px; }
@@ -56,7 +59,7 @@
   .row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; gap: 8px; align-items: center; padding: 6px; border-radius: 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
   .row.sel { background: var(--pill-ok); }
   .row.sel .pill.ok { background: var(--card); }
-  .row .k { font-size: 11px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .row .k { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
   .row input[type=text] { padding: 7px 10px; }
   .foot { flex: none; display: flex; gap: 8px; }
 
@@ -66,12 +69,12 @@
   #robots.many { grid-template: none / repeat(auto-fill, minmax(280px, 1fr)); grid-auto-rows: max-content; overflow: auto; }
   .rcard { overflow: auto; }
   .rhead { display: flex; align-items: center; gap: 10px; }
-  .rhead .av { width: 40px; height: 40px; border-radius: 50%; background: var(--deep); color: var(--mint); display: grid; place-items: center; font-weight: 900; font-size: 14px; flex: none; }
-  .rhead b { flex: 1; font-size: 17px; font-weight: 900; }
+  .rhead .av { width: 40px; height: 40px; border-radius: 50%; background: var(--deep); color: var(--mint); display: grid; place-items: center; font-weight: 700; font-size: 14px; flex: none; }
+  .rhead b { flex: 1; font-size: 17px; font-weight: 700; }
   .f { display: grid; gap: 4px; }
   .f .seg button { flex: 1; }
   .f small { color: var(--muted); font-size: 12px; }
-  details.adv summary { cursor: pointer; font-weight: 800; font-size: 13px; padding: 6px 0; }
+  details.adv summary { cursor: pointer; font-weight: 700; font-size: 13px; padding: 6px 0; }
   .knob { display: grid; grid-template-columns: minmax(0, 1fr) 84px; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
   .knob .id { color: var(--ink); }
   .knob small { display: block; color: var(--muted); font-size: 12px; line-height: 1.35; }
@@ -119,10 +122,10 @@
   #featNote { display: grid; gap: 8px; margin-bottom: 8px; }
   #featNote:empty { display: none; }
   #featNote .strip { border-radius: 12px; padding: 8px 12px; }
-  #featNote ul { margin: 4px 0 0; padding-left: 18px; font-weight: 500; }
+  #featNote ul { margin: 4px 0 0; padding-left: 18px; font-weight: 700; }
   #sysFeatures { display: grid; gap: 6px; margin-bottom: 12px; }
   .backup { width: min(640px, 100%); display: grid; gap: 14px; padding: 24px; }
-  .backup h2 { margin: 0; font-size: 26px; font-weight: 900; }
+  .backup h2 { margin: 0; font-size: 26px; font-weight: 700; }
   .backup p { margin: 0; }
   .backup .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .backup .act { cursor: pointer; }
@@ -134,7 +137,7 @@
   #sysOffline { grid-column: 1 / -1; border-radius: 12px; }
   .checks { display: grid; gap: 10px; }
   .chk { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; font-size: 14px; line-height: 1.35; }
-  .chk .ic { font-weight: 900; text-align: center; }
+  .chk .ic { font-weight: 700; text-align: center; }
   .chk small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; line-height: 1.45; }
   .chk code, .sysnote code { font: 500 12px var(--mono); }
   .checks .bad { color: var(--danger); font-weight: 700; }
@@ -556,16 +559,16 @@ function renderFeatures() {
     `<label>${t}<input type="text" data-pay="${k}" value="${esc(P[k] || '')}"${k === 'account' ? ' inputmode="numeric"' : ''}></label>`).join('') +
     (P.qr ? `<div class="nrow"><img src="${esc(P.qr)}" alt="QR tĩnh"><button class="btn sm" id="qrDel">Xoá ảnh QR</button></div>` : ''));
   const M = D.menu, stations = Object.keys(D.points).filter(k => D.points[k].kind === 'station');
-  const inp = (path, v, cls = '', type = 'text') => `<input type="${type}" class="${cls}" data-m="${path}" value="${esc(v ?? '')}">`;
+  const inp = (path, v, cls = '', type = 'text') => `<input type="${type}" class="${cls}" aria-label="${esc(({id: 'Mã', vi: 'Tên tiếng Việt', en: 'Tên tiếng Anh', price: 'Giá (đ)'})[path.split('.').pop()] || path)}" data-m="${path}" value="${esc(v ?? '')}">`;
   setHTML($('menu'), `<table class="mtab"><tr class="muted small"><td>Mã</td><td>Danh mục</td><td>English</td><td>Trạm làm</td><td></td></tr>
     ${M.cats.map((c, i) => `<tr><td>${inp(`cats.${i}.id`, c.id, 'id')}</td><td>${inp(`cats.${i}.vi`, c.vi)}</td><td>${inp(`cats.${i}.en`, c.en)}</td>
-      <td><select data-m="cats.${i}.station">${stations.map(st => `<option value="${st}" ${(c.station || SiteLib.firstStation(D)) === st ? 'selected' : ''}>${esc(D.points[st].name)}</option>`).join('')}</select></td>
+      <td><select aria-label="Trạm của nhóm món" data-m="cats.${i}.station">${stations.map(st => `<option value="${st}" ${(c.station || SiteLib.firstStation(D)) === st ? 'selected' : ''}>${esc(D.points[st].name)}</option>`).join('')}</select></td>
       <td><button class="btn sm" data-mdel="cats.${i}" aria-label="Xoá danh mục">✕</button></td></tr>`).join('')}</table>
     <button class="btn sm" data-madd="cats">+ Thêm danh mục</button>
     <table class="mtab"><tr class="muted small"><td>Mã</td><td>Món</td><td>English</td><td>Giá (đ)</td><td>Danh mục</td><td></td></tr>
     ${M.items.map((it, i) => `<tr><td>${inp(`items.${i}.id`, it.id, 'id')}</td><td>${inp(`items.${i}.vi`, it.vi)}</td><td>${inp(`items.${i}.en`, it.en)}</td>
       <td>${inp(`items.${i}.price`, it.price, '', 'number')}</td>
-      <td><select data-m="items.${i}.cat">${M.cats.map(c => `<option value="${esc(c.id)}" ${it.cat === c.id ? 'selected' : ''}>${esc(c.vi)}</option>`).join('')}</select></td>
+      <td><select aria-label="Nhóm món" data-m="items.${i}.cat">${M.cats.map(c => `<option value="${esc(c.id)}" ${it.cat === c.id ? 'selected' : ''}>${esc(c.vi)}</option>`).join('')}</select></td>
       <td><button class="btn sm" data-mdel="items.${i}" aria-label="Xoá món">✕</button></td></tr>`).join('')}</table>
     <button class="btn sm primary" data-madd="items" ${M.cats.length ? '' : 'disabled'}>+ Thêm món</button>`);
 }
@@ -582,7 +585,7 @@ function renderPolicy() {
       <div class="feat"><div><b>Ghi chú nhanh</b><small>${n ? n + ' chip' : 'Không có chip'} trên máy trạm · chỉ là phím tắt nhập ghi chú</small></div><button class="btn sm" data-go="roles">Sửa ở Vai trò & thời gian</button></div></section>
     <section><p class="lbl grp">Khách tại bàn</p>
       <div class="feat"><div><b>Trạm nhận yêu cầu</b><small>Gọi nhân viên, tính tiền và thanh toán báo về trạm này</small></div>
-        <select id="reqStation"><option value="">Chưa chọn</option>${stations.map(s => `<option value="${esc(s)}">${esc(D.points[s].name)}</option>`).join('')}</select></div>
+        <select id="reqStation" aria-label="Trạm nhận yêu cầu"><option value="">Chưa chọn</option>${stations.map(s => `<option value="${esc(s)}">${esc(D.points[s].name)}</option>`).join('')}</select></div>
       ${row('callStaff')}${row('requestBill')}
       <div class="feat"><div><b>Khách trả/huỷ món</b><small id="cancelHint"></small></div><div class="seg sm">${Object.entries(CANCEL_VI).map(([k, [t]]) => `<button data-cancel="${k}">${t}</button>`).join('')}</div></div>
       ${row('order')}${row('pay')}</section>

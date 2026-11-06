@@ -2,32 +2,35 @@
 <html lang="vi"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MEKONIQ Serve S1</title>
-<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand.css">
+<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand/tokens.css">
+<link rel="stylesheet" href="brand/fonts.css">
+<link rel="stylesheet" href="brand/components.css">
+<link rel="stylesheet" href="brand.css">
 <style>
   /* Hub (spec 4.7): light page that may scroll; hero is the only dark block. */
-  .hero { background: var(--deep); color: #fff; padding: 20px 16px 56px; }
+  .hero { background: var(--deep); color: var(--fg); padding: 20px 16px 56px; }
   .hero > div { max-width: 1100px; margin: auto; }
   .hero .bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 44px; }
   .hero .wordmark span { color: var(--mint); }
-  .hero .identity small { color: #9bb6b0; }
+  .hero .identity small { color: var(--muted); }
   .hero h1 span { color: var(--mint); }
   .hero h1 { font-size: clamp(40px, 7vw, 76px); letter-spacing: -.05em; line-height: 1.02; margin: 0 0 14px; }
   .hero p { color: #bad0ca; max-width: 62ch; margin: 0 0 20px; font-size: 18px; }
   .hero .eyebrow { color: var(--mint); }
   .hero .btn { min-height: 44px; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center; }
-  .hero .btn:not(.primary) { color: #fff; border-color: #3c5f5c; }
+  .hero .btn:not(.primary) { color: var(--fg); border-color: #3c5f5c; }
   .hero .row { display: flex; gap: 10px; flex-wrap: wrap; }
   main { max-width: 1100px; margin: auto; padding: 8px 16px 64px; }
   main section { margin-top: 32px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
   a.c, .c { display: block; text-decoration: none; padding: 18px; border-radius: 18px; border: 1px solid var(--line); background: var(--card); min-width: 0; }
   a.c:hover { border-color: var(--green); }
-  .c .tag { display: block; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .12em; color: var(--green); margin-bottom: 6px; }
+  .c .tag { display: block; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--green); margin-bottom: 6px; }
   .c h3 { font-size: 18px; margin: 0 0 6px; }
   .c p { font-size: 14px; color: var(--muted); margin: 0; }
   .c.wide { grid-column: 1 / -1; }
   .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 8px; margin-top: 12px; }
-  .tgrid a { text-align: center; padding: 12px 0; border-radius: 12px; border: 1px solid var(--line); text-decoration: none; font-weight: 800; background: var(--bg); }
+  .tgrid a { text-align: center; padding: 12px 0; border-radius: 12px; border: 1px solid var(--line); text-decoration: none; font-weight: 700; background: var(--bg); }
   .tgrid a:hover { border-color: var(--green); }
   ol.script { margin: 0; padding-left: 22px; display: grid; gap: 8px; font-size: 14px; }
   ol.script b { color: var(--green); }
@@ -36,7 +39,7 @@
 </head><body>
 <section class="hero"><div>
   <div class="bar">
-    <a class="identity" href="index.html"><img src="logo.svg" alt=""><div><div class="wordmark">MEKONI<span>Q</span></div><small>Intelligence in Motion</small></div></a>
+    <a class="identity" href="index.html" aria-label="MEKONIQ"><picture><source media="(max-width: 767px)" srcset="brand/assets/MEKONIQ_Icon_Transparent.svg"><img src="brand/assets/MEKONIQ_Horizontal_White_Transparent_v2.png" alt=""></picture><small>Intelligence in Motion.</small></a>
     <a class="btn sm" href="/admin/" style="color:#fff;border-color:#3c5f5c">⚙️ Node-RED</a>
   </div>
   <p class="eyebrow">Serve S1 · Demo vận hành</p>

@@ -2,16 +2,19 @@
 <html lang="vi"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MEKONIQ Serve · Thiết kế lộ trình</title>
-<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand.css">
+<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand/tokens.css">
+<link rel="stylesheet" href="brand/fonts.css">
+<link rel="stylesheet" href="brand/components.css">
+<link rel="stylesheet" href="brand.css">
 <style>
   /* Route designer (spec 4.4): map card | 360px aside. Portrait: map on top, aside in two columns. */
   .screen > .body { grid-template: minmax(0, 1fr) / minmax(0, 1fr) 360px; }
-  .appbar .btn { min-height: 40px; padding: 8px 14px; border-color: #3c5f5c; color: var(--card); }
+  .appbar .btn { min-height: 44px; padding: 8px 14px; border-color: #3c5f5c; color: var(--fg); }
   .appbar .btn.primary { border-color: var(--mint); color: var(--deep); }
   .appbar .btn.armed { border-color: var(--danger); }
-  .appbar .pill { color: var(--deep); }
-  .appbar .btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-  .dirty { color: var(--accent); font-weight: 800; font-size: 13px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .appbar .pill { color: var(--fg); }
+  .appbar .btn:disabled { opacity: 1; cursor: not-allowed; transform: none; }
+  .dirty { color: var(--accent); font-weight: 700; font-size: 13px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .mapcard { display: flex; flex-direction: column; padding: 12px 14px; min-height: 0; }
   .mapcard .eyebrow { flex: none; }
@@ -40,7 +43,7 @@
   .tools button { padding: 8px 2px; font-size: 13px; }
   .hint { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
   .props { display: grid; gap: 4px; }
-  .props .head b { font-size: 18px; font-weight: 900; }
+  .props .head b { font-size: 18px; font-weight: 700; }
   .prow { display: flex; align-items: center; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); cursor: pointer; }
   .prow .ptxt { flex: 1; min-width: 0; }
   .prow .ptxt b { display: block; font-size: 14px; }
@@ -50,7 +53,7 @@
   .warns { display: grid; gap: 6px; font-size: 13px; }
   .warns .bad { color: var(--danger); font-weight: 700; }
   .warns .good { color: var(--green); font-weight: 700; }
-  #rules summary { cursor: pointer; font-size: 13px; font-weight: 800; }
+  #rules summary { cursor: pointer; font-size: 13px; font-weight: 700; }
   .rules { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 13px; }
 
   @media (orientation: portrait), (max-width: 900px) {

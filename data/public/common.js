@@ -149,8 +149,7 @@ function tableState(t) {
   return ['Sẵn sàng', ''];
 }
 
-const BRAND = sub => `<a class="identity" href="index.html"><img src="logo.svg" alt="">
-  <div><div class="wordmark">MEKONI<span>Q</span></div><small>${esc(sub)}</small></div></a>`;
+const BRAND = sub => `<a class="identity" href="index.html" aria-label="MEKONIQ"><picture><source media="(max-width: 767px)" srcset="brand/assets/MEKONIQ_Icon_Transparent.svg"><img src="brand/assets/MEKONIQ_Horizontal_White_Transparent_v2.png" alt=""></picture><small>${esc(sub)}</small></a>`;
 
 // ---- Floor plan + route network (station map, map editor) ----
 // Tables/zones are drawn where they are; the route network shows where robots may drive.

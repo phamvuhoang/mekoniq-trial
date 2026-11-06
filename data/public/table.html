@@ -2,31 +2,34 @@
 <html lang="vi"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MEKONIQ Serve · Bàn của bạn</title>
-<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand.css">
+<link rel="icon" href="logo.svg"><link rel="stylesheet" href="brand/tokens.css">
+<link rel="stylesheet" href="brand/fonts.css">
+<link rel="stylesheet" href="brand/components.css">
+<link rel="stylesheet" href="brand.css">
 <style>
   body { background: var(--bg-app); }
-  .phone { max-width: 480px; min-height: 100vh; min-height: 100dvh; margin: auto; background: #f6f8f4; display: flex; flex-direction: column; }
+  .phone { max-width: 480px; min-height: 100vh; min-height: 100dvh; margin: auto; background: var(--bg); display: flex; flex-direction: column; }
   @media (min-width: 481px) { .phone { border-inline: 1px solid var(--line); } }
   header.hd { display: flex; align-items: center; gap: 10px; padding: 14px 20px; }
   header.hd #lang { margin-left: auto; display: flex; gap: 6px; }
   main { flex: 1; padding: 8px 20px 32px; display: grid; gap: 14px; align-content: start; }
-  h1 { font-size: 52px; font-weight: 900; letter-spacing: -.05em; margin: 0; line-height: 1; }
+  h1 { font-size: 52px; font-weight: 700; letter-spacing: -.05em; margin: 0; line-height: 1; }
   #list { display: grid; gap: 14px; }
   .item { display: grid; gap: 10px; border-radius: 22px; padding: 18px; }
   .item .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-  .item .row b { font-size: 18px; font-weight: 900; }
+  .item .row b { font-size: 18px; font-weight: 700; }
   .item .what { color: var(--muted); }
   .steps { display: flex; gap: 4px; }
   .steps i { flex: 1; height: 6px; border-radius: 3px; background: var(--soft); }
   .steps i.on { background: var(--green); }
-  .item .status { font-size: 17px; font-weight: 800; }
+  .item .status { font-size: 17px; font-weight: 700; }
   .item .status.ok { color: var(--green); }
   .item .status.cancel { color: var(--warn-ink); }
   .item .act { min-height: 56px; }
   .item .act b { font-size: 17px; }
   .empty { text-align: center; color: var(--muted); padding: 24px 0; }
-  #lang button { min-height: 36px; padding: 6px 12px; }
-  footer.ft { position: sticky; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: #f6f8f4; border-top: 1px solid var(--line); }
+  #lang button { min-height: 44px; padding: 6px 12px; }
+  footer.ft { position: sticky; bottom: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px; padding: 12px 20px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
   footer.ft .act { min-height: 64px; }
   footer.ft .act b { font-size: 17px; }
   body.ft .toasts { bottom: 120px; }
