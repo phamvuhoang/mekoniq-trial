@@ -9,6 +9,35 @@ const path = require('node:path');
  const browser = await chromium.launch({headless:true, executablePath:process.env.PLAYWRIGHT_CHROMIUM});
  const results=[];
  try {
+ if (process.env.BRAND_ARMED_ONLY) {
+  const checks=[];
+  for (const [route,id] of [['setup.html?tab=backup','reset'],['map.html','defaults']]) {
+   const page=await browser.newPage({viewport:{width:1280,height:800},reducedMotion:'reduce'});
+   await page.goto('http://127.0.0.1:1891/'+route);
+   await page.waitForFunction(()=>App.site && App.state);
+   await page.addScriptTag({path:process.env.AXE_MODULE || require.resolve('axe-core/axe.min.js')});
+   await page.evaluate(()=>{window.brandSent=[];const original=send;send=o=>{brandSent.push(o);original(o);};});
+   const button=page.locator('#'+id);
+   await button.click();
+   const state=await button.evaluate(e=>({armed:e.classList.contains('armed'),label:e.textContent.trim(),fg:getComputedStyle(e).color,bg:getComputedStyle(e).backgroundColor}));
+   const resets=await page.evaluate(()=>brandSent.filter(o=>['siteReset','mapReset'].includes(o.type)));
+   await page.screenshot({path:path.join(out,'final-'+id+'-armed.png'),fullPage:true});
+   const violations=await page.evaluate(async()=> (await axe.run(document,{runOnly:{type:'tag',values:['wcag2a','wcag2aa','wcag21aa','wcag22aa']}})).violations.filter(v=>['critical','serious'].includes(v.impact)).map(v=>({id:v.id,nodes:v.nodes.map(n=>({target:n.target,summary:n.failureSummary}))})));
+   checks.push({id,state,resets,violations});
+   await page.close(); // Dismiss the confirmation without its second click.
+  }
+  fs.writeFileSync(path.join(out,'final-armed.json'),JSON.stringify(checks,null,2));
+  for (const check of checks) {
+   assert.ok(check.state.armed,check.id+' first click arms confirmation');
+   assert.match(check.state.label,/Chạm lần nữa/,check.id+' confirmation label');
+   assert.deepEqual(check.resets,[],check.id+' first click sends no reset');
+   assert.equal(check.state.fg,'rgb(7, 29, 33)',check.id+' on-danger foreground');
+   assert.equal(check.state.bg,'rgb(255, 170, 160)',check.id+' danger background');
+   assert.deepEqual(check.violations,[],check.id+' armed accessibility');
+  }
+  console.log('BRAND_ARMED_OK: 2 genuine first-click confirmations; no reset commands; WCAG serious/critical 0');
+  return;
+ }
  for (const [width,height] of (process.env.BRAND_STATES_ONLY ? [] : [[1280,800],[800,1280],[390,844]])) {
   for (const lang of ['vi','en']) {
    const context=await browser.newContext({viewport:{width,height}, reducedMotion:'reduce'});

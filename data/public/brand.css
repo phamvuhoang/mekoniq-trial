@@ -245,3 +245,5 @@ input[type=checkbox], input[type=radio] { min-height: auto; }
 }
 
 .appbar .home { min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
+/* Page app bars set button text; armed destructive confirmations keep their inverse text. */
+.appbar .btn.armed { color: var(--mq-on-danger); }
